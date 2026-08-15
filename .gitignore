@@ -1,0 +1,4 @@
+bin/
+.ai.dump/
+agents.local.md
+.mise.local.toml

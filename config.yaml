@@ -1,0 +1,44 @@
+# bang — address-bar shortcuts. Saved changes reload instantly; a config that
+# fails to parse is rejected and the running one stays live.
+#
+# Rules are tried in order, first match wins. Patterns are anchored implicitly,
+# so `mr` matches only the exact string "mr". Capture groups are $1..$9 and are
+# percent-encoded on substitution. {{name}} refers to vars below.
+
+listen: 127.0.0.1:8111
+
+fallback: https://www.google.com/search?q={{q}}
+
+vars:
+  gl: https://gitlab.com
+  gh: https://github.com
+  # Change these three and most rules below follow.
+  main_repo: mygroup/main-repo
+  gh_repo: myuser/myrepo
+  me: taile
+
+rules:
+  - match: '!(\d+)'
+    to: "{{gl}}/{{main_repo}}/-/merge_requests/$1"
+    desc: MR on the default GitLab repo
+
+  - match: 'p!(\d+)'
+    to: "{{gl}}/mygroup/platform/-/merge_requests/$1"
+    desc: MR on the platform repo
+
+  - match: 'k!(\d+)'
+    to: "{{gl}}/mygroup/kernel/-/merge_requests/$1"
+    desc: MR on the kernel repo
+
+  # GitHub redirects /issues/N to /pull/N when N is a PR, so one rule covers both.
+  - match: 'gh#?(\d+)'
+    to: "{{gh}}/{{gh_repo}}/issues/$1"
+    desc: Issue or PR on the default GitHub repo
+
+  - match: "mr"
+    to: "{{gl}}/{{main_repo}}/-/merge_requests?scope=all&state=opened&assignee_username={{me}}"
+    desc: My open MRs
+
+  - match: "mrr"
+    to: "{{gl}}/{{main_repo}}/-/merge_requests?scope=all&state=opened&reviewer_username={{me}}"
+    desc: MRs awaiting my review
