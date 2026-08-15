@@ -5,7 +5,9 @@ import (
 	"encoding/xml"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 )
@@ -19,12 +21,44 @@ type server struct {
 	verbose bool
 }
 
-func (s *server) routes() *http.ServeMux {
+func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleRoot)
-	mux.HandleFunc("/opensearch.xml", s.handleOpenSearch)
-	mux.HandleFunc("/resolve", s.handleResolve)
-	return mux
+	// "GET /{$}" matches the root and nothing else. A bare "/" pattern is a
+	// catch-all, so every stray path the browser probes — /favicon.ico,
+	// /.well-known/… — used to render the onboarding page with a 200.
+	mux.HandleFunc("GET /{$}", s.handleRoot)
+	mux.HandleFunc("GET /opensearch.xml", s.handleOpenSearch)
+	mux.HandleFunc("GET /resolve", s.handleResolve)
+	return loopbackOnly(mux)
+}
+
+// loopbackOnly rejects requests whose Host is not a loopback name. Binding
+// 127.0.0.1 is not sufficient on its own: a remote page can reach a loopback
+// service by DNS rebinding — pointing its own hostname at 127.0.0.1 — after
+// which the browser treats the reply as same-origin and the page can read the
+// whole rule set. The rebound request still carries the attacker's hostname in
+// Host, so checking it closes the hole.
+func loopbackOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isLoopbackHost(r.Host) {
+			http.Error(w, "bang answers on loopback only", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isLoopbackHost(hostPort string) bool {
+	host := hostPort
+	if h, _, err := net.SplitHostPort(hostPort); err == nil {
+		host = h
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	// SplitHostPort leaves the brackets on a bare IPv6 literal with no port.
+	addr, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	return err == nil && addr.IsLoopback()
 }
 
 // baseURL reflects the host the browser actually used, so the descriptor works
@@ -85,8 +119,9 @@ func (s *server) handleOpenSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/opensearchdescription+xml")
-	w.Write([]byte(xml.Header))
-	w.Write(out)
+	if _, err := w.Write(append([]byte(xml.Header), out...)); err != nil {
+		log.Printf("opensearch: %v", err)
+	}
 }
 
 // handleResolve is a dry run: it reports where a query would go without
@@ -97,12 +132,15 @@ func (s *server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	matched, rule := c.Match(q)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	err := json.NewEncoder(w).Encode(map[string]any{
 		"query":   q,
 		"target":  c.Resolve(q),
 		"matched": matched,
 		"rule":    rule,
 	})
+	if err != nil {
+		log.Printf("resolve: %v", err)
+	}
 }
 
 type pageData struct {
@@ -131,9 +169,7 @@ func detectBrowser(ua string) string {
 	switch {
 	case strings.Contains(ua, "Firefox"):
 		return "firefox"
-	case strings.Contains(ua, "Edg/"):
-		return "chrome"
-	case strings.Contains(ua, "Chrome"):
+	case strings.Contains(ua, "Edg/"), strings.Contains(ua, "Chrome"):
 		return "chrome"
 	case strings.Contains(ua, "Safari"):
 		return "safari"

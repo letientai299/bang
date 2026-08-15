@@ -32,6 +32,7 @@ func main() {
 		cfg = SafeFallback()
 	}
 	live.Store(cfg)
+	addr := cfg.Listen
 
 	go watch(*path, func() {
 		next, err := LoadConfig(*path)
@@ -39,13 +40,23 @@ func main() {
 			log.Printf("reload: %v — keeping previous config", err)
 			return
 		}
+		if next.Listen != addr {
+			// The listener is bound once, at startup. Without this the new
+			// address looks applied but silently does nothing.
+			log.Printf(
+				"reload: listen is now %s but still bound to %s — restart to rebind",
+				next.Listen, addr,
+			)
+		}
 		live.Store(next)
 		log.Printf("reload: %d rules", len(next.Rules))
 	})
 
 	srv := &server{live: &live, verbose: *verbose}
-	addr := cfg.Listen
-	log.Printf("listening on http://%s (%d rules) — open it to finish setup", addr, len(cfg.Rules))
+	log.Printf(
+		"listening on http://%s (%d rules) — open it to finish setup",
+		addr, len(cfg.Rules),
+	)
 	log.Fatal((&http.Server{
 		Addr:              addr,
 		Handler:           srv.routes(),
@@ -70,12 +81,12 @@ func watch(path string, onChange func()) {
 		log.Printf("watch: %v — hot reload disabled", err)
 		return
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	// Follow symlinks so a config kept in a git repo and linked into place
 	// still reloads: writes land in the repo directory, not the link's.
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
 	}
 
 	dir := filepath.Dir(path)
