@@ -35,6 +35,14 @@ rules:
     to: '{{gl}}/{{repo}}/-/merge_requests'
 `
 
+// Prefixes of the URLs testConfig resolves to, so the table below fits on one
+// line per case and the interesting part of each expectation stays visible.
+const (
+	mainMR   = "https://gitlab.com/g/main/-/merge_requests"
+	platform = "https://gitlab.com/g/platform/-/merge_requests"
+	google   = "https://www.google.com/search?q="
+)
+
 func TestResolve(t *testing.T) {
 	c := load(t, testConfig)
 
@@ -43,20 +51,20 @@ func TestResolve(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"bare sigil", "!313", "https://gitlab.com/g/main/-/merge_requests/313"},
-		{"prefixed sigil", "p!313", "https://gitlab.com/g/platform/-/merge_requests/313"},
+		{"bare sigil", "!313", mainMR + "/313"},
+		{"prefixed sigil", "p!313", platform + "/313"},
 		{"hash form", "gh#12", "https://github.com/u/r/issues/12"},
 		{"hashless form", "gh12", "https://github.com/u/r/issues/12"},
-		{"bare word", "mr", "https://gitlab.com/g/main/-/merge_requests"},
-		{"surrounding space", "  !313  ", "https://gitlab.com/g/main/-/merge_requests/313"},
+		{"bare word", "mr", mainMR},
+		{"surrounding space", "  !313  ", mainMR + "/313"},
 
 		// Rules must not fire on anything that merely contains them, or normal
 		// searching breaks.
-		{"substring is not a match", "why is mr robot good", "https://www.google.com/search?q=why+is+mr+robot+good"},
-		{"prefix is not a match", "mri scan", "https://www.google.com/search?q=mri+scan"},
-		{"sigil inside a phrase", "wow !313 huh", "https://www.google.com/search?q=wow+%21313+huh"},
-		{"unmatched falls through", "golang defer", "https://www.google.com/search?q=golang+defer"},
-		{"empty query", "", "https://www.google.com/search?q="},
+		{"substring", "why is mr robot good", google + "why+is+mr+robot+good"},
+		{"prefix is not a match", "mri scan", google + "mri+scan"},
+		{"sigil inside a phrase", "wow !313 huh", google + "wow+%21313+huh"},
+		{"unmatched falls through", "golang defer", google + "golang+defer"},
+		{"empty query", "", google},
 	}
 
 	for _, tt := range tests {
@@ -72,8 +80,8 @@ func TestFirstMatchWins(t *testing.T) {
 	// "!(\d+)" would also match "p!313" if it were not anchored, so ordering
 	// plus anchoring together must send it to the platform repo.
 	c := load(t, testConfig)
-	if got := c.Resolve("p!313"); got != "https://gitlab.com/g/platform/-/merge_requests/313" {
-		t.Errorf("got %q", got)
+	if got, want := c.Resolve("p!313"), platform+"/313"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
@@ -84,7 +92,8 @@ rules:
   - match: 'x (.+)'
     to: 'https://example.com/?s=$1'
 `)
-	if got, want := c.Resolve("x a&b=c"), "https://example.com/?s=a%26b%3Dc"; got != want {
+	got, want := c.Resolve("x a&b=c"), "https://example.com/?s=a%26b%3Dc"
+	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
@@ -99,23 +108,26 @@ rules:
   - match: 'x (.+)'
     to: 'https://example.com/?s=$1'
 `)
-	if got, want := c.Resolve("x {{gl}}"), "https://example.com/?s=%7B%7Bgl%7D%7D"; got != want {
+	got, want := c.Resolve("x {{gl}}"), "https://example.com/?s=%7B%7Bgl%7D%7D"
+	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestBadConfigIsRejected(t *testing.T) {
+	const head = "fallback: 'https://x?q={{q}}'\n"
+
 	tests := []struct {
 		name string
 		yaml string
 	}{
 		{"missing fallback", `rules: [{match: 'a', to: 'https://x'}]`},
 		{"fallback without placeholder", `fallback: https://x/`},
-		{"bad regex", "fallback: 'https://x?q={{q}}'\nrules: [{match: '[', to: 'https://x'}]"},
-		{"undefined var", "fallback: 'https://x?q={{q}}'\nrules: [{match: 'a', to: '{{nope}}'}]"},
-		{"group out of range", "fallback: 'https://x?q={{q}}'\nrules: [{match: 'a', to: 'https://x/$2'}]"},
-		{"unknown field", "fallback: 'https://x?q={{q}}'\nrulez: []"},
-		{"missing to", "fallback: 'https://x?q={{q}}'\nrules: [{match: 'a'}]"},
+		{"bad regex", head + `rules: [{match: '[', to: 'https://x'}]`},
+		{"undefined var", head + `rules: [{match: 'a', to: '{{nope}}'}]`},
+		{"group out of range", head + `rules: [{match: 'a', to: 'https://x/$2'}]`},
+		{"unknown field", head + `rulez: []`},
+		{"missing to", head + `rules: [{match: 'a'}]`},
 	}
 
 	for _, tt := range tests {
@@ -133,7 +145,7 @@ func TestBadConfigIsRejected(t *testing.T) {
 
 func TestSafeFallbackResolves(t *testing.T) {
 	c := SafeFallback()
-	if got, want := c.Resolve("hello world"), "https://www.google.com/search?q=hello+world"; got != want {
+	if got, want := c.Resolve("hello world"), google+"hello+world"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

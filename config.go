@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"cmp"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -58,11 +60,9 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	if c.Listen == "" {
-		c.Listen = SafeFallback().Listen
-	}
+	c.Listen = cmp.Or(c.Listen, SafeFallback().Listen)
 	if !strings.Contains(c.Fallback, "{{q}}") {
-		return nil, fmt.Errorf("fallback must be set and contain {{q}}")
+		return nil, errors.New("fallback must be set and contain {{q}}")
 	}
 
 	for i := range c.Rules {
@@ -97,11 +97,11 @@ func (c *Config) validate(r *Rule) error {
 		switch {
 		case m[1] != "":
 			n, _ := strconv.Atoi(m[1])
-			if n > r.re.NumSubexp() {
-				return fmt.Errorf("$%d but pattern has %d capture groups", n, r.re.NumSubexp())
+			if groups := r.re.NumSubexp(); n > groups {
+				return fmt.Errorf("$%d but pattern has %d capture groups", n, groups)
 			}
 		case m[2] == "q":
-			return fmt.Errorf("{{q}} is only valid in fallback; use a capture group")
+			return errors.New("{{q}} is only valid in fallback; use a capture group")
 		default:
 			if _, ok := c.Vars[m[2]]; !ok {
 				return fmt.Errorf("undefined var {{%s}}", m[2])
@@ -129,7 +129,7 @@ func (c *Config) Resolve(q string) string {
 // Match reports whether a rule claimed the query, and which pattern did. It
 // exists so the dry-run endpoint can distinguish a real hit from a fallback,
 // which Resolve alone cannot express.
-func (c *Config) Match(q string) (bool, string) {
+func (c *Config) Match(q string) (matched bool, pattern string) {
 	q = strings.TrimSpace(q)
 	for i := range c.Rules {
 		if c.Rules[i].re.MatchString(q) {
