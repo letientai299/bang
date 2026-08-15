@@ -1,0 +1,82 @@
+[tools]
+go = "latest"
+golangci-lint = "2"
+ko = "latest"
+prek = "latest"
+prettier = "latest"
+shellcheck = "latest"
+shfmt = "latest"
+
+[env]
+_.path = ["bin"]
+
+[hooks.enter]
+script = '''
+{% if os_family() == "unix" %}
+if command -v prek >/dev/null 2>&1; then
+  if [ -f "$MISE_PROJECT_ROOT/prek.toml" ] && [ -d "$MISE_PROJECT_ROOT/.git" ]; then
+    if [ ! -x "$MISE_PROJECT_ROOT/.git/hooks/pre-commit" ]; then
+      prek install --install-hooks --config "$MISE_PROJECT_ROOT/prek.toml" --quiet
+    fi
+  fi
+fi
+{% endif %}
+'''
+
+# -- build / run --
+
+[tasks.build]
+description = "Build the bang binary into bin/"
+alias = "b"
+run = "go build -trimpath -o bin/bang ."
+sources = ["*.go", "go.mod", "go.sum"]
+outputs = ["bin/bang"]
+
+# Named "serve", not "run": `mise run` is a built-in subcommand and would
+# shadow the task. Same reason `fmt` below must be invoked as `mise run fmt`.
+[tasks.serve]
+description = "Run the resolver against the repo's example config"
+run = "go run . -config config.yaml -v"
+
+[tasks.install]
+description = "Install the binary and launchd agent (see docs/deployment.md)"
+depends = ["build"]
+run = """
+mkdir -p "$HOME/.local/bin" "$HOME/.config/bang"
+install -m 0755 bin/bang "$HOME/.local/bin/bang"
+[ -f "$HOME/.config/bang/config.yaml" ] || cp config.yaml "$HOME/.config/bang/config.yaml"
+"""
+
+# --bare keeps the tag at $KO_DOCKER_REPO instead of appending the Go import
+# path, so the image is plain `ko.local/bang`. Needs a running Docker daemon.
+[tasks.image]
+description = "Build a container image with ko (see docs/deployment.md)"
+env.KO_DOCKER_REPO = "ko.local/bang"
+run = "ko build --local --bare --platform=linux/$(go env GOARCH) ."
+
+[tasks.clean]
+description = "Remove build output"
+run = "rm -rf bin"
+
+# -- test --
+
+[tasks.test]
+description = "Run the Go test suite"
+alias = "t"
+run = "go test -race -cover -count=1 -shuffle=on -timeout=5m ./..."
+
+# -- lint / fmt --
+
+[tasks.lint]
+description = "Lint Go and shell sources"
+alias = "l"
+run = ["golangci-lint run ./...", "shellcheck testprofile.sh"]
+
+[tasks.fmt]
+description = "Format Go, shell, and prose sources"
+run = [
+  "golangci-lint fmt ./...",
+  "golangci-lint run --fix ./...",
+  "shfmt -w -i 2 -ci testprofile.sh",
+  "prettier --write '**/*.md' '**/*.{yaml,yml}' '**/*.json'",
+]

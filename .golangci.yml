@@ -1,0 +1,113 @@
+version: "2"
+
+linters:
+  enable:
+    # Correctness
+    - copyloopvar
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Error handling
+    - errorlint
+    - nilerr
+
+    # Security — this process sees every keystroke typed into the address bar.
+    - bidichk
+    - bodyclose
+    - gosec
+    - noctx
+
+    # Code quality
+    - gocritic
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - wastedassign
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+
+    errorlint:
+      asserts: true
+      comparison: true
+      errorf: true
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+
+    gosec:
+      # Audit mode: stricter analysis, fewer false negatives.
+      config:
+        global:
+          audit: true
+      # G104 duplicates errcheck; excluding it avoids double-flagging the
+      # intentional `_ = err` patterns.
+      excludes:
+        - G104
+
+    govet:
+      enable:
+        - shadow
+
+  exclusions:
+    rules:
+      # Test fixtures are written with 0o600 already; the remaining hits are
+      # about temp-dir permissions that t.TempDir() controls.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G301|G306"
+      - path: _test\.go
+        linters:
+          - gocritic
+        text: httpNoBody
+      # httptest.ResponseRecorder.Result() returns a NopCloser over a buffer:
+      # there is no connection to leak.
+      - path: _test\.go
+        linters:
+          - bodyclose
+
+      # The config path is a CLI flag chosen by whoever starts the process, not
+      # request input.
+      - path: config\.go
+        linters:
+          - gosec
+        text: "G304"
+
+      # The redirect target is built from the operator's own rules file. Being
+      # an open redirect is the entire point of a resolver, and the fallback
+      # branch is what keeps unmatched queries reaching a real search engine.
+      - path: web\.go
+        linters:
+          - gosec
+        text: "G710"
+
+      # -v logging is opt-in and local. The query is printed with %q, which
+      # escapes the newlines that would make log injection possible.
+      - path: web\.go
+        linters:
+          - gosec
+        text: "G706"
+
+formatters:
+  enable:
+    - gofumpt
+    - golines
+  settings:
+    gofumpt:
+      extra-rules: true
+    golines:
+      max-len: 80
+      tab-len: 2
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
