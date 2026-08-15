@@ -9,47 +9,20 @@ browser keyword shortcuts all require a Tab or Space, so they cannot express
 `!313`. Because it is the default engine it sees everything typed into the
 address bar, which is why it binds `127.0.0.1` and nothing leaves the machine.
 
-## Install
+## Quick start
 
 ```sh
-go build -o ~/.local/bin/bang .
-mkdir -p ~/.config/bang && cp config.yaml ~/.config/bang/config.yaml
-
-sed -e "s|__HOME__|$HOME|g" -e "s|__CONFIG__|$HOME/.config/bang/config.yaml|" \
-  com.taile.bang.plist > ~/Library/LaunchAgents/com.taile.bang.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.taile.bang.plist
+mise install
+mise run install                    # -> ~/.local/bin/bang, ~/.config/bang/config.yaml
+bang -config ~/.config/bang/config.yaml
 ```
 
-Keep `config.yaml` in a git repo and symlink it — the watcher resolves the real
-path on each save, so edits through the symlink still trigger a reload.
+Then open <http://127.0.0.1:8111/> and follow the on-page instructions.
 
-## Browser setup
-
-Open <http://127.0.0.1:8111/> in the browser you want to set up. The page
-detects which browser you are using and shows only the steps that apply, lists
-the loaded rules, and has a box for trying a shortcut without navigating.
-
-The page advertises an [OpenSearch][opensearch] descriptor, so both browsers
-discover the engine on their own — but **neither makes it the default**, and
-that last step is the one that makes bare input like `!313` work.
-
-- **Chrome** adds it to Site search automatically, **as inactive**. Go to
-  `chrome://settings/searchEngines`, click Activate, then ⋮ → Make default.
-- **Firefox** offers _Add “bang”_ from the address bar menu. Then Settings →
-  Search → Default Search Engine.
-- **Safari** is out of scope: Apple restricts the default engine to a fixed
-  list, and the workaround is a third-party extension that would see every
-  query.
-
-## Checking rules without a browser
-
-`/resolve` is a dry run — it reports where a query would land instead of
-redirecting, so it is safe to script:
-
-```sh
-curl -s 'http://127.0.0.1:8111/resolve?q=p%21313'
-# {"matched":true,"query":"p!313","rule":"p!(\\d+)","target":"https://gitlab.com/..."}
-```
+- [docs/deployment.md][deployment] — keeping it running: launchd on macOS, or a
+  container image built with [ko][ko].
+- [docs/browsers.md][browsers] — registering it in Chrome and Firefox, and the
+  quirks of each.
 
 ## Config
 
@@ -67,6 +40,55 @@ running one stays live**, so a typo mid-edit cannot break the address bar. If
 the config is already broken at startup the service still starts and forwards
 everything to the fallback engine.
 
+Keep `config.yaml` in a git repo and symlink it — the watcher resolves the real
+path on each save, so edits through the symlink still trigger a reload.
+
+`listen` is read once, at startup. Changing it logs a warning and takes effect
+on the next restart.
+
+## Checking rules without a browser
+
+`/resolve` is a dry run — it reports where a query would land instead of
+redirecting, so it is safe to script:
+
+```sh
+curl -s 'http://127.0.0.1:8111/resolve?q=p%21313'
+# {"matched":true,"query":"p!313","rule":"p!(\\d+)","target":"https://gitlab.com/..."}
+```
+
+## Scope
+
+Requests are answered only when the `Host` header is a loopback name —
+`127.0.0.1`, `::1`, or `localhost`. Binding loopback is not enough on its own: a
+remote page can reach a loopback service by DNS rebinding, and would then be
+same-origin enough to read the whole rule set. Reaching bang under a LAN
+hostname gets a `403`.
+
+Only `GET /`, `GET /opensearch.xml`, and `GET /resolve` are served. Everything
+else is a `404`.
+
+## Development
+
+Tooling is pinned in `mise.toml`; `mise install` fetches it.
+
+| Task             | What it does                                           |
+| ---------------- | ------------------------------------------------------ |
+| `mise run build` | Builds `bin/bang`                                      |
+| `mise run test`  | `go test` with race, shuffle, and coverage             |
+| `mise run lint`  | [golangci-lint][golangci] and [shellcheck][shellcheck] |
+| `mise run fmt`   | Formats Go, shell, and prose                           |
+| `mise run serve` | Runs against the repo's `config.yaml`, verbose         |
+| `mise run image` | Builds the container image with ko                     |
+
+Use `mise run <task>`, not `mise <task>` — mise has built-in `fmt` and `run`
+subcommands that shadow tasks of the same name.
+
+[prek][prek] runs `fmt`, `lint`, and `test` before each commit; the hook
+installs itself the first time you enter the directory with mise active.
+
+Go formatting is `gofumpt` plus `golines` at 80 columns, enforced by
+`golangci-lint fmt`. Markdown, YAML, and JSON go through [prettier][prettier].
+
 ## Troubleshooting
 
 **A bare word like `mr` opens a hostname prompt instead of searching.** Chrome
@@ -79,4 +101,10 @@ percent-encoded to `%23`, so the fragment is never stripped.
 **Nothing resolves.** `tail -f ~/Library/Logs/bang.log`. A rejected reload is
 logged with the offending rule number.
 
-[opensearch]: https://developer.mozilla.org/en-US/docs/Web/XML/Guides/OpenSearch
+[browsers]: ./docs/browsers.md
+[deployment]: ./docs/deployment.md
+[golangci]: https://golangci-lint.run/
+[ko]: https://ko.build/
+[prek]: https://github.com/j178/prek
+[prettier]: https://prettier.io/
+[shellcheck]: https://github.com/koalaman/shellcheck
