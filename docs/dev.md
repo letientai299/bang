@@ -30,9 +30,11 @@ run:
 curl -s 'http://127.0.0.1:8111/resolve?q=m%20jazz%20fusion'
 ```
 
-To exercise browser integration without changing an existing Chrome profile, run
-`scripts/testprofile.sh` after starting bang. The script creates a temporary
-profile and removes it when Chrome exits.
+To exercise browser integration without changing a browser profile you rely on,
+run `scripts/test_chrome.sh` or `scripts/test_firefox.sh` after starting bang.
+Each launches its browser on a profile of its own, reused across runs and
+discarded by `--reset`. Set bang as the default engine there once — see
+[browsers.md][browsers], which also covers why that step cannot be scripted.
 
 ## Test changes
 

@@ -42,9 +42,15 @@ Two-character shortcuts avoid the ambiguity entirely.
 
 ### Testing without touching your profile
 
-`scripts/testprofile.sh` launches Chrome on a throwaway `--user-data-dir` with
-bang already set as the default engine, and deletes the profile on exit. Use it
-to try rule changes without reconfiguring your real browser.
+`scripts/test_chrome.sh` launches Chrome on a separate `--user-data-dir`, so
+rule changes can be tried without reconfiguring your real browser. Do the
+Activate and Make default steps above once in that profile; it is kept between
+runs, and `--reset` throws it away.
+
+Chrome signs the Default Search Engine setting and reverts any copy written into
+the profile from outside the browser — the "Chrome reset these settings" notice.
+So the engine cannot be seeded ahead of the first launch, on any channel. Beta
+and Canary behave the same; the script uses whichever channel it finds.
 
 ## Firefox
 
@@ -74,6 +80,18 @@ check it in `about:config`.
 
 Search suggestions stay empty because bang serves no suggestions endpoint. That
 is cosmetic — resolution and fallback are unaffected.
+
+### Testing without touching your profile
+
+`scripts/test_firefox.sh` is the Firefox counterpart of the Chrome script above:
+a separate `--profile`, kept between runs, with `--reset` to discard it. Add the
+engine and make it the default once inside it.
+
+The [`SearchEngines` policy][firefox-policies] would set the default without any
+clicking, and since Firefox 139 it works outside the ESR channel. It is no help
+on a machine whose Firefox is managed: a macOS configuration profile takes
+precedence, and Firefox then ignores every `policies.json`. `about:policies`
+shows which policies are actually in effect.
 
 ## Safari
 
@@ -108,6 +126,8 @@ It does not. Once the browser has decided the input is a search query, `#` is
 percent-encoded to `%23` on the way out, so the fragment never gets stripped.
 
 [deploy]: ./deploy.md
+[firefox-policies]:
+  https://firefox-admin-docs.mozilla.org/reference/policies/searchengines/
 [firefox-search]:
   https://support.mozilla.org/en-US/kb/add-or-remove-search-engine-firefox
 [opensearch]: https://developer.mozilla.org/en-US/docs/Web/XML/Guides/OpenSearch
