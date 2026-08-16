@@ -42,9 +42,9 @@ Two-character shortcuts avoid the ambiguity entirely.
 
 ### Testing without touching your profile
 
-`testprofile.sh` launches Chrome on a throwaway `--user-data-dir` with bang
-already set as the default engine, and deletes the profile on exit. Use it to
-try rule changes without reconfiguring your real browser.
+`scripts/testprofile.sh` launches Chrome on a throwaway `--user-data-dir` with
+bang already set as the default engine, and deletes the profile on exit. Use it
+to try rule changes without reconfiguring your real browser.
 
 ## Firefox
 

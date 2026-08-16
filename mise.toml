@@ -36,7 +36,7 @@ outputs = ["bin/bang"]
 # shadow the task. Same reason `fmt` below must be invoked as `mise run fmt`.
 [tasks.serve]
 description = "Run the resolver against the repo's example config"
-run = "go run . -config config.yaml -v"
+run = "go run . -config deploy/config.yaml -v"
 
 [tasks.install]
 description = "Install the binary and launchd agent (see docs/deployment.md)"
@@ -44,7 +44,7 @@ depends = ["build"]
 run = """
 mkdir -p "$HOME/.local/bin" "$HOME/.config/bang"
 install -m 0755 bin/bang "$HOME/.local/bin/bang"
-[ -f "$HOME/.config/bang/config.yaml" ] || cp config.yaml "$HOME/.config/bang/config.yaml"
+[ -f "$HOME/.config/bang/config.yaml" ] || cp deploy/config.yaml "$HOME/.config/bang/config.yaml"
 """
 
 # --bare keeps the tag at $KO_DOCKER_REPO instead of appending the Go import
@@ -70,13 +70,13 @@ run = "go test -race -cover -count=1 -shuffle=on -timeout=5m ./..."
 [tasks.lint]
 description = "Lint Go and shell sources"
 alias = "l"
-run = ["golangci-lint run ./...", "shellcheck testprofile.sh"]
+run = ["golangci-lint run ./...", "shellcheck scripts/*.sh"]
 
 [tasks.fmt]
 description = "Format Go, shell, and prose sources"
 run = [
   "golangci-lint fmt ./...",
   "golangci-lint run --fix ./...",
-  "shfmt -w -i 2 -ci testprofile.sh",
+  "shfmt -w -i 2 -ci scripts/*.sh",
   "prettier --write '**/*.md' '**/*.{yaml,yml}' '**/*.json'",
 ]

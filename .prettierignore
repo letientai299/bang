@@ -1,0 +1,4 @@
+# Agent and editor state, not project prose.
+.claude/
+.ai.dump/
+bin/

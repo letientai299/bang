@@ -26,7 +26,8 @@ Then open <http://127.0.0.1:8111/> and follow the on-page instructions.
 
 ## Config
 
-See [config.yaml](./config.yaml). Rules are tried in order, first match wins.
+See [deploy/config.yaml](./deploy/config.yaml). Rules are tried in order, first
+match wins.
 
 - Patterns are **anchored implicitly** — `mr` matches only the exact string
   `mr`, never `mr robot`. Without this, ordinary searches get hijacked.

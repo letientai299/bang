@@ -51,8 +51,9 @@ echo
 echo "Type these into the address bar, then check the resolver log:"
 echo "    !313    p!313    gh#12    mr    how to center a div"
 echo
-echo "Also open Settings -> Search engine and confirm whether an http:// URL"
-echo "can be made the default at all. That is the open question."
+echo "The profile ships with bang already set as the default engine, so this"
+echo "skips the Activate / Make default dance and tests the rules themselves."
+echo "To rehearse that setup instead, see docs/browsers.md."
 echo
 echo "Close Chrome to delete the profile."
 

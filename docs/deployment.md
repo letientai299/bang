@@ -24,14 +24,14 @@ there is not one already.
 
 ## Auto-start with launchd (macOS)
 
-`com.taile.bang.plist` is a template with two placeholders, because a launchd
-job gets no shell and cannot expand `$HOME` itself.
+`deploy/com.taile.bang.plist` is a template with two placeholders, because a
+launchd job gets no shell and cannot expand `$HOME` itself.
 
 ```sh
 mise run install
 
 sed -e "s|__HOME__|$HOME|g" -e "s|__CONFIG__|$HOME/.config/bang/config.yaml|" \
-  com.taile.bang.plist > ~/Library/LaunchAgents/com.taile.bang.plist
+  deploy/com.taile.bang.plist > ~/Library/LaunchAgents/com.taile.bang.plist
 
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.taile.bang.plist
 ```
