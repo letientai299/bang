@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/taile/bang/internal/config"
-	"github.com/taile/bang/internal/config/configtest"
+	"github.com/example/bang/internal/config"
+	"github.com/example/bang/internal/config/configtest"
 )
 
 // Real user agents: Chrome's contains "Safari" and Edge's contains "Chrome",

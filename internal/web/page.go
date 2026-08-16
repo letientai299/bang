@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/taile/bang/internal/config"
+	"github.com/example/bang/internal/config"
 )
 
 type pageData struct {

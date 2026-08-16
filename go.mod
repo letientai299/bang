@@ -1,4 +1,4 @@
-module github.com/taile/bang
+module github.com/example/bang
 
 go 1.26.5
 

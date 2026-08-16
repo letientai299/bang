@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/taile/bang/internal/config"
-	"github.com/taile/bang/internal/web"
+	"github.com/example/bang/internal/config"
+	"github.com/example/bang/internal/web"
 )
 
 func main() {

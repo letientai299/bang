@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taile/bang/internal/config"
-	"github.com/taile/bang/internal/config/configtest"
+	"github.com/example/bang/internal/config"
+	"github.com/example/bang/internal/config/configtest"
 )
 
 const (

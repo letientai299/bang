@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/taile/bang/internal/config"
+	"github.com/example/bang/internal/config"
 )
 
 // shortName must match the OpenSearch <ShortName> and the autodiscovery link's

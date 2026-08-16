@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taile/bang/internal/config"
+	"github.com/example/bang/internal/config"
 )
 
 // Sample is the rule set the tests resolve against. It mirrors the shape of a
