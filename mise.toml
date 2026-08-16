@@ -6,6 +6,7 @@ prek = "latest"
 prettier = "latest"
 shellcheck = "latest"
 shfmt = "latest"
+watchexec = "2"
 
 [env]
 _.path = ["bin"]
@@ -37,6 +38,22 @@ outputs = ["bin/bang"]
 [tasks.serve]
 description = "Run the resolver against the repo's example config"
 run = "go run . -config deploy/config.yaml -v"
+
+# Only .go files. The config is reloaded in-process, so restarting on a write
+# to it would paper over the reload path — the part worth exercising by hand.
+#
+# Builds and execs rather than `go run`: go run holds the server as a child
+# process, and watchexec's stop signal reaches the parent first, so a restart
+# could leave the old server owning port 8111 and the new one failing to bind.
+# exec puts the server itself at the head of the process group.
+#
+# A separate binary from `build`, which is cached on sources/outputs: sharing
+# bin/bang would let a dev build satisfy that cache, and `install` would then
+# ship a binary that never went through -trimpath.
+[tasks.dev]
+description = "Run the resolver, restarting it on Go changes"
+alias = "d"
+run = "watchexec --restart --exts go -- 'go build -o bin/bang-dev . && exec bin/bang-dev -config deploy/config.yaml -v'"
 
 [tasks.install]
 description = "Install the binary and launchd agent (see docs/deployment.md)"

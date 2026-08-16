@@ -85,6 +85,7 @@ Tooling is pinned in `mise.toml`; `mise install` fetches it.
 | `mise run lint`  | [golangci-lint][golangci] and [shellcheck][shellcheck] |
 | `mise run fmt`   | Formats Go, shell, and prose                           |
 | `mise run serve` | Runs against `deploy/config.yaml`, verbose             |
+| `mise run dev`   | Same, restarting on Go changes                         |
 | `mise run image` | Builds the container image with ko                     |
 
 Use `mise run <task>`, not `mise <task>` — mise has built-in `fmt` and `run`
