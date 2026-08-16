@@ -49,7 +49,7 @@ echo "profile:  $PROFILE"
 echo "resolver: http://127.0.0.1:${PORT}/"
 echo
 echo "Type these into the address bar, then check the resolver log:"
-echo "    !313    p!313    gh#12    mr    how to center a div"
+echo "    pr    #123    is    m jazz fusion    y Go concurrency"
 echo
 echo "The profile ships with bang already set as the default engine, so this"
 echo "skips the Activate / Make default dance and tests the rules themselves."

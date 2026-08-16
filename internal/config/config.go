@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -52,6 +53,11 @@ func SafeFallback() *Config {
 // — a captured query containing "{{gl}}" must not expand into a var.
 var placeholder = regexp.MustCompile(`\$([1-9])|\{\{(\w+)\}\}`)
 
+// varPlaceholder is separate from placeholder because captures have no meaning
+// inside vars. Vars are fully resolved when the config loads, before a rule
+// expands its request-time captures.
+var varPlaceholder = regexp.MustCompile(`\{\{(\w+)\}\}`)
+
 // Load reads and validates the rule set at path.
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
@@ -69,6 +75,9 @@ func Load(path string) (*Config, error) {
 	c.Listen = cmp.Or(c.Listen, SafeFallback().Listen)
 	if !strings.Contains(c.Fallback, "{{q}}") {
 		return nil, errors.New("fallback must be set and contain {{q}}")
+	}
+	if err := c.resolveVars(); err != nil {
+		return nil, err
 	}
 
 	for i := range c.Rules {
@@ -94,6 +103,78 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	return &c, nil
+}
+
+// resolveVars expands references between vars. A depth-first traversal permits
+// forward references while detecting cycles before any partially expanded value
+// reaches a rule.
+func (c *Config) resolveVars() error {
+	const (
+		visiting = 1
+		done     = 2
+	)
+
+	raw := c.Vars
+	resolved := make(map[string]string, len(raw))
+	state := make(map[string]int, len(raw))
+	stack := make([]string, 0, len(raw))
+
+	var resolve func(string) (string, error)
+	resolve = func(name string) (string, error) {
+		switch state[name] {
+		case done:
+			return resolved[name], nil
+		case visiting:
+			start := slices.Index(stack, name)
+			cycle := append(slices.Clone(stack[start:]), name)
+			for i := range cycle {
+				cycle[i] = "{{" + cycle[i] + "}}"
+			}
+			return "", fmt.Errorf("variable cycle: %s", strings.Join(cycle, " -> "))
+		}
+
+		value, ok := raw[name]
+		if !ok {
+			return "", fmt.Errorf("undefined var {{%s}}", name)
+		}
+
+		state[name] = visiting
+		stack = append(stack, name)
+		var expandErr error
+		value = varPlaceholder.ReplaceAllStringFunc(value, func(ref string) string {
+			if expandErr != nil {
+				return ref
+			}
+			match := varPlaceholder.FindStringSubmatch(ref)
+			expanded, err := resolve(match[1])
+			if err != nil {
+				expandErr = err
+				return ref
+			}
+			return expanded
+		})
+		stack = stack[:len(stack)-1]
+		if expandErr != nil {
+			return "", expandErr
+		}
+
+		state[name] = done
+		resolved[name] = value
+		return value, nil
+	}
+
+	names := make([]string, 0, len(raw))
+	for name := range raw {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		if _, err := resolve(name); err != nil {
+			return fmt.Errorf("var {{%s}}: %w", name, err)
+		}
+	}
+	c.Vars = resolved
+	return nil
 }
 
 // validate rejects references that could not possibly resolve at request time,

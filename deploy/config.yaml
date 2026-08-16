@@ -2,43 +2,44 @@
 # fails to parse is rejected and the running one stays live.
 #
 # Rules are tried in order, first match wins. Patterns are anchored implicitly,
-# so `mr` matches only the exact string "mr". Capture groups are $1..$9 and are
-# percent-encoded on substitution. {{name}} refers to vars below.
+# so `pr` matches only the exact string "pr". Capture groups are $1..$9 and are
+# percent-encoded on substitution. {{name}} refers to vars below, and vars may
+# refer to other vars when their values are quoted.
 
 listen: 127.0.0.1:8111
 
 fallback: https://www.google.com/search?q={{q}}
 
 vars:
-  gl: https://gitlab.com
   gh: https://github.com
-  # Change these three and most rules below follow.
-  main_repo: mygroup/main-repo
-  gh_repo: myuser/myrepo
-  me: taile
+  go_repo: "{{gh}}/golang/go"
 
 rules:
-  - match: '!(\d+)'
-    to: "{{gl}}/{{main_repo}}/-/merge_requests/$1"
-    desc: MR on the default GitLab repo
+  - match: "pr"
+    to: "{{go_repo}}/pulls"
+    desc: Open Go pull requests
 
-  - match: 'p!(\d+)'
-    to: "{{gl}}/mygroup/platform/-/merge_requests/$1"
-    desc: MR on the platform repo
+  # GitHub redirects /issues/N to /pull/N when N is a pull request.
+  - match: '#(\d+)'
+    to: "{{go_repo}}/issues/$1"
+    desc: Go issue or pull request by number
 
-  - match: 'k!(\d+)'
-    to: "{{gl}}/mygroup/kernel/-/merge_requests/$1"
-    desc: MR on the kernel repo
+  - match: "is"
+    to: "{{go_repo}}/issues"
+    desc: Go issues
 
-  # GitHub redirects /issues/N to /pull/N when N is a PR, so one rule covers both.
-  - match: 'gh#?(\d+)'
-    to: "{{gh}}/{{gh_repo}}/issues/$1"
-    desc: Issue or PR on the default GitHub repo
+  - match: "m"
+    to: https://music.youtube.com/
+    desc: YouTube Music
 
-  - match: "mr"
-    to: "{{gl}}/{{main_repo}}/-/merge_requests?scope=all&state=opened&assignee_username={{me}}"
-    desc: My open MRs
+  - match: "hn"
+    to: https://news.ycombinator.com/
+    desc: Hacker News
 
-  - match: "mrr"
-    to: "{{gl}}/{{main_repo}}/-/merge_requests?scope=all&state=opened&reviewer_username={{me}}"
-    desc: MRs awaiting my review
+  - match: "m (.+)"
+    to: https://music.youtube.com/search?q=$1
+    desc: Search YouTube Music
+
+  - match: "y (.+)"
+    to: https://www.youtube.com/results?search_query=$1
+    desc: Search YouTube

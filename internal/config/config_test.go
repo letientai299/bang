@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/example/bang/internal/config"
@@ -48,6 +49,37 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+func TestExampleConfig(t *testing.T) {
+	c, err := config.Load(filepath.Join("..", "..", "deploy", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		query string
+		want  string
+	}{
+		{"pr", "https://github.com/golang/go/pulls"},
+		{"#123", "https://github.com/golang/go/issues/123"},
+		{"is", "https://github.com/golang/go/issues"},
+		{"m", "https://music.youtube.com/"},
+		{"hn", "https://news.ycombinator.com/"},
+		{"m jazz fusion", "https://music.youtube.com/search?q=jazz+fusion"},
+		{
+			"y Go concurrency",
+			"https://www.youtube.com/results?search_query=Go+concurrency",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			if got := c.Resolve(tt.query); got != tt.want {
+				t.Errorf("Resolve(%q) = %q, want %q", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFirstMatchWins(t *testing.T) {
 	// "!(\d+)" would also match "p!313" if it were not anchored, so ordering
 	// plus anchoring together must send it to the platform repo.
@@ -67,6 +99,29 @@ rules:
 	got, want := c.Resolve("x a&b=c"), "https://example.com/?s=a%26b%3Dc"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestVarsCanReferToVars(t *testing.T) {
+	c := configtest.Load(t, `
+fallback: https://www.google.com/search?q={{q}}
+vars:
+  gh: https://github.com
+  owner: golang
+  org: "{{gh}}/{{owner}}"
+  repo: "{{org}}/go"
+rules:
+  - match: '#(\d+)'
+    to: '{{repo}}/issues/$1'
+`)
+
+	got := c.Resolve("#123")
+	want := "https://github.com/golang/go/issues/123"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got, want := c.Vars["repo"], "https://github.com/golang/go"; got != want {
+		t.Errorf("resolved repo var = %q, want %q", got, want)
 	}
 }
 
@@ -90,16 +145,41 @@ func TestBadConfigIsRejected(t *testing.T) {
 	const head = "fallback: 'https://x?q={{q}}'\n"
 
 	tests := []struct {
-		name string
-		yaml string
+		name    string
+		yaml    string
+		wantErr string
 	}{
-		{"missing fallback", `rules: [{match: 'a', to: 'https://x'}]`},
-		{"fallback without placeholder", `fallback: https://x/`},
-		{"bad regex", head + `rules: [{match: '[', to: 'https://x'}]`},
-		{"undefined var", head + `rules: [{match: 'a', to: '{{nope}}'}]`},
-		{"group out of range", head + `rules: [{match: 'a', to: 'https://x/$2'}]`},
-		{"unknown field", head + `rulez: []`},
-		{"missing to", head + `rules: [{match: 'a'}]`},
+		{name: "missing fallback", yaml: `rules: [{match: 'a', to: 'https://x'}]`},
+		{name: "fallback without placeholder", yaml: `fallback: https://x/`},
+		{name: "bad regex", yaml: head + `rules: [{match: '[', to: 'https://x'}]`},
+		{
+			name: "undefined rule var",
+			yaml: head + `rules: [{match: 'a', to: '{{nope}}'}]`,
+		},
+		{
+			name: "group out of range",
+			yaml: head + `rules: [{match: 'a', to: 'https://x/$2'}]`,
+		},
+		{name: "unknown field", yaml: head + `rulez: []`},
+		{name: "missing to", yaml: head + `rules: [{match: 'a'}]`},
+		{
+			name:    "undefined nested var",
+			yaml:    head + `vars: {repo: '{{missing}}/repo'}`,
+			wantErr: "var {{repo}}: undefined var {{missing}}",
+		},
+		{
+			name:    "direct variable cycle",
+			yaml:    head + `vars: {repo: '{{repo}}'}`,
+			wantErr: "variable cycle: {{repo}} -> {{repo}}",
+		},
+		{
+			name: "indirect variable cycle",
+			yaml: head + `vars:
+  org: '{{repo}}'
+  repo: '{{org}}'
+`,
+			wantErr: "variable cycle: {{org}} -> {{repo}} -> {{org}}",
+		},
 	}
 
 	for _, tt := range tests {
@@ -108,8 +188,11 @@ func TestBadConfigIsRejected(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := config.Load(path); err == nil {
+			_, err := config.Load(path)
+			if err == nil {
 				t.Error("expected an error, got nil")
+			} else if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not contain %q", err, tt.wantErr)
 			}
 		})
 	}
