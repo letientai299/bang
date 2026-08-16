@@ -11,24 +11,23 @@ logging is disabled by default.
 
 ## Quick start
 
-Install the toolchain with [mise][mise], then install and run bang:
+Install the toolchain with [mise][mise], then build and start the container:
 
 ```sh
 mise install
-mise run install
-bang
+mise run prod
 ```
 
-Open <http://127.0.0.1:8111/> and follow the browser-specific instructions. See
+Open <http://127.0.0.1:9111/> and follow the browser-specific instructions. See
 the [documentation index][docs] for deployment, browser setup, and development
 guides.
 
 ## Configure shortcuts
 
-The installed config starts as a copy of [deploy/config.yaml][config]. Edit
-`~/.config/bang/config.yaml` to add personal shortcuts — or the same path under
-`XDG_CONFIG_HOME`, which is where bang looks when that variable is set. Rules
-are tried in order, and the first match wins.
+The first run creates `deploy/config.local.yaml` as a copy of
+[deploy/config.yaml][config]. Edit that file to add personal shortcuts; it is
+gitignored, so they stay out of the repo. Rules are tried in order, and the
+first match wins.
 
 - Patterns are anchored implicitly. A pattern such as `pr` matches the complete
   query and cannot capture an ordinary search containing those letters.
@@ -50,14 +49,15 @@ invalid. The `listen` setting takes effect after a restart.
 Use `GET /resolve` to inspect a shortcut without navigating:
 
 ```sh
-curl -s 'http://127.0.0.1:8111/resolve?q=%23123'
+curl -s 'http://127.0.0.1:9111/resolve?q=%23123'
 ```
 
 `bang check` reports the same problems as a reload without needing a running
 service, which is what a config kept in git can run from a hook or a CI job:
 
 ```sh
-bang check ~/.config/bang/config.yaml
+mise run build
+bin/bang check deploy/config.local.yaml
 ```
 
 Typing the start of a shortcut offers the shortcuts that begin with it. A rule

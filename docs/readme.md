@@ -1,7 +1,6 @@
 # Documentation
 
-- [Deployment][deploy]: install bang and keep it running with launchd or a
-  container.
+- [Deployment][deploy]: run bang as a container and keep it running.
 - [Browser setup][browsers]: register bang as the default search engine in
   Chrome or Firefox.
 - [Development][dev]: develop, test, and troubleshoot the project.

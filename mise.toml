@@ -55,18 +55,6 @@ description = "Run the resolver, restarting it on Go changes"
 alias = "d"
 run = "watchexec --restart --exts go -- 'go build -o bin/bang-dev . && exec bin/bang-dev -config deploy/config.yaml -v'"
 
-[tasks.install]
-description = "Install the binary and config (see docs/deploy.md)"
-depends = ["build"]
-run = """
-# The cache directory is created here because launchd will not create the
-# parent of a log path and fails the job when it is missing.
-mkdir -p "$HOME/.local/bin" "${XDG_CONFIG_HOME:-$HOME/.config}/bang" "${XDG_CACHE_HOME:-$HOME/.cache}/bang"
-install -m 0755 bin/bang "$HOME/.local/bin/bang"
-config="${XDG_CONFIG_HOME:-$HOME/.config}/bang/config.yaml"
-[ -f "$config" ] || cp deploy/config.yaml "$config"
-"""
-
 # --bare keeps the tag at $KO_DOCKER_REPO instead of appending the Go import
 # path, so the image is plain `ko.local/bang`. Needs a running Docker daemon.
 # ko loads the image through the Docker Go SDK, which reads DOCKER_HOST but
@@ -86,6 +74,39 @@ run = """
 export DOCKER_HOST="${DOCKER_HOST:-$(docker context inspect --format '{% raw %}{{ .Endpoints.docker.Host }}{% endraw %}')}"
 ko build --local --bare --platform=linux/$(go env GOARCH) .
 """
+
+# Serves 9111 so the always-on container does not fight `mise run dev`, which
+# serves the tracked config on 8111. Both can run at once; point the browser at
+# whichever instance you mean.
+#
+# --restart unless-stopped is what replaces a launchd job: the daemon brings the
+# container back at startup, so bang is up whenever OrbStack is. An explicit
+# `docker stop bang` stays stopped until the next `mise run prod`.
+#
+# The deploy directory is mounted rather than the config file itself. Editors
+# commonly save by replacing the file, and a single-file bind mount pins the
+# original inode, so the container would never see an edit.
+#
+# A literal TOML string keeps the shell line continuations intact — in a basic
+# """ string TOML would eat the backslash and fold the command onto one line.
+[tasks.prod]
+description = "Build the image and run it as the always-on `bang` container"
+depends = ["image"]
+run = '''
+config="$MISE_PROJECT_ROOT/deploy/config.local.yaml"
+# Seeded with listen rewritten because a published port only reaches the server
+# when it listens on all container interfaces, not container loopback.
+[ -f "$config" ] || sed 's|^listen:.*|listen: 0.0.0.0:9111|' \
+  "$MISE_PROJECT_ROOT/deploy/config.yaml" > "$config"
+
+# Replace any previous container so the task is re-runnable after a rebuild.
+docker rm -f bang >/dev/null 2>&1 || true
+docker run -d --name bang \
+  --restart unless-stopped \
+  -p 127.0.0.1:9111:9111 \
+  -v "$MISE_PROJECT_ROOT/deploy:/config:ro" \
+  ko.local/bang:latest -config /config/config.local.yaml
+'''
 
 [tasks.clean]
 description = "Remove build output"

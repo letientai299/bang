@@ -67,9 +67,8 @@ reload keeps the previous valid config. The error identifies the rejected rule.
 If a changed `listen` address appears to have no effect, restart bang. The
 listener is created once at startup.
 
-For a launchd installation, stream `~/.cache/bang/bang.log` and use the status
-commands in [deploy.md][deploy]. For a container, inspect `docker logs bang` and
-confirm the port is published only on `127.0.0.1`.
+For the deployed container, inspect `docker logs bang` and confirm the port is
+published only on `127.0.0.1`. The status commands are in [deploy.md][deploy].
 
 [browsers]: ./browsers.md
 [deploy]: ./deploy.md

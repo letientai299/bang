@@ -1,4 +1,5 @@
 bin/
+deploy/config.local.yaml
 .ai.dump/
 agents.local.md
 .mise.local.toml
