@@ -37,7 +37,7 @@ outputs = ["bin/bang"]
 # shadow the task. Same reason `fmt` below must be invoked as `mise run fmt`.
 [tasks.serve]
 description = "Run the resolver against the repo's example config"
-run = "go run . -config deploy/config.yaml -v"
+run = "go run . -config deploy/config.toml -v"
 
 # Only .go files. The config is reloaded in-process, so restarting on a write
 # to it would paper over the reload path — the part worth exercising by hand.
@@ -53,7 +53,7 @@ run = "go run . -config deploy/config.yaml -v"
 [tasks.dev]
 description = "Run the resolver, restarting it on Go changes"
 alias = "d"
-run = "watchexec --restart --exts go -- 'go build -o bin/bang-dev . && exec bin/bang-dev -config deploy/config.yaml -v'"
+run = "watchexec --restart --exts go -- 'go build -o bin/bang-dev . && exec bin/bang-dev -config deploy/config.toml -v'"
 
 # --bare keeps the tag at $KO_DOCKER_REPO instead of appending the Go import
 # path, so the image is plain `ko.local/bang`. Needs a running Docker daemon.
@@ -93,11 +93,11 @@ ko build --local --bare --platform=linux/$(go env GOARCH) .
 description = "Build the image and run it as the always-on `bang` container"
 depends = ["image"]
 run = '''
-config="$MISE_PROJECT_ROOT/deploy/config.local.yaml"
+config="$MISE_PROJECT_ROOT/deploy/config.local.toml"
 # Seeded with listen rewritten because a published port only reaches the server
 # when it listens on all container interfaces, not container loopback.
-[ -f "$config" ] || sed 's|^listen:.*|listen: 0.0.0.0:9111|' \
-  "$MISE_PROJECT_ROOT/deploy/config.yaml" > "$config"
+[ -f "$config" ] || sed "s|^listen =.*|listen = '0.0.0.0:9111'|" \
+  "$MISE_PROJECT_ROOT/deploy/config.toml" > "$config"
 
 # Replace any previous container so the task is re-runnable after a rebuild.
 docker rm -f bang >/dev/null 2>&1 || true
@@ -105,7 +105,7 @@ docker run -d --name bang \
   --restart unless-stopped \
   -p 127.0.0.1:9111:9111 \
   -v "$MISE_PROJECT_ROOT/deploy:/config:ro" \
-  ko.local/bang:latest -config /config/config.local.yaml
+  ko.local/bang:latest -config /config/config.local.toml
 '''
 
 [tasks.clean]
@@ -136,5 +136,5 @@ run = [
   "golangci-lint fmt ./...",
   "golangci-lint run --fix ./...",
   "shfmt -w -i 2 -ci scripts/*.sh",
-  "prettier --write '**/*.md' '**/*.{yaml,yml}' '**/*.json'",
+  "prettier --write '**/*.md' '**/*.json'",
 ]

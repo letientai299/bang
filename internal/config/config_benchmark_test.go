@@ -19,7 +19,7 @@ var (
 func BenchmarkResolveDefaultConfig(b *testing.B) {
 	c := loadBenchmarkConfig(
 		b,
-		filepath.Join("..", "..", "deploy", "config.yaml"),
+		filepath.Join("..", "..", "deploy", "config.toml"),
 	)
 
 	benchmarks := []struct {
@@ -46,7 +46,7 @@ func BenchmarkResolveDefaultConfig(b *testing.B) {
 func BenchmarkResolveAndMatchDefaultConfig(b *testing.B) {
 	c := loadBenchmarkConfig(
 		b,
-		filepath.Join("..", "..", "deploy", "config.yaml"),
+		filepath.Join("..", "..", "deploy", "config.toml"),
 	)
 
 	for _, query := range []string{"#123", "ordinary web search"} {
@@ -63,13 +63,20 @@ func BenchmarkResolveAndMatchDefaultConfig(b *testing.B) {
 
 func BenchmarkResolveRegexRules(b *testing.B) {
 	const ruleCount = 32
-	var yaml strings.Builder
-	yaml.WriteString("fallback: https://example.com/search?q={{q}}\nrules:\n")
+	var tomlText strings.Builder
+	tomlText.WriteString(
+		"fallback = 'https://example.com/search?q={{q}}'\nrules = [\n",
+	)
 	for i := range ruleCount {
-		fmt.Fprintf(&yaml, "  - match: 'r%d-(\\d+)'\n", i)
-		fmt.Fprintf(&yaml, "    to: 'https://example.com/%d/$1'\n", i)
+		fmt.Fprintf(
+			&tomlText,
+			"  ['r%d-(\\d+)', 'https://example.com/%d/$1'],\n",
+			i,
+			i,
+		)
 	}
-	c := loadBenchmarkConfigText(b, yaml.String())
+	tomlText.WriteString("]\n")
+	c := loadBenchmarkConfigText(b, tomlText.String())
 
 	benchmarks := []struct {
 		name  string
@@ -99,10 +106,10 @@ func loadBenchmarkConfig(b *testing.B, path string) *config.Config {
 	return c
 }
 
-func loadBenchmarkConfigText(b *testing.B, yaml string) *config.Config {
+func loadBenchmarkConfigText(b *testing.B, tomlText string) *config.Config {
 	b.Helper()
-	path := filepath.Join(b.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+	path := filepath.Join(b.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(tomlText), 0o600); err != nil {
 		b.Fatal(err)
 	}
 	return loadBenchmarkConfig(b, path)

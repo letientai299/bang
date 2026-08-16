@@ -24,10 +24,21 @@ guides.
 
 ## Configure shortcuts
 
-The first run creates `deploy/config.local.yaml` as a copy of
-[deploy/config.yaml][config]. Edit that file to add personal shortcuts; it is
+The first run creates `deploy/config.local.toml` as a copy of
+[deploy/config.toml][config]. Edit that file to add personal shortcuts; it is
 gitignored, so they stay out of the repo. Rules are tried in order, and the
 first match wins.
+
+Each rule is one TOML array: `[match, target]`, with an optional third
+description. Single-quoted literal strings keep regular expressions and bang
+placeholders exactly as written:
+
+```toml
+rules = [
+  ['pr', '{{go_repo}}/pulls', 'Open Go pull requests'],
+  ['#(\d+)', '{{go_repo}}/issues/$1'],
+]
+```
 
 - Patterns are anchored implicitly. A pattern such as `pr` matches the complete
   query and cannot capture an ordinary search containing those letters.
@@ -38,7 +49,7 @@ first match wins.
   `?`, `#`, or a host of its own into the target, so keep the pattern feeding it
   tight.
 - `{{name}}` expands a value from `vars`. Variables may refer to other
-  variables; quote YAML values that begin with `{{...}}`.
+  variables.
 - `{{q}}` represents the complete query and is valid only in `fallback`.
 
 Saved changes reload automatically. An invalid change is rejected while the last
@@ -57,7 +68,7 @@ service, which is what a config kept in git can run from a hook or a CI job:
 
 ```sh
 mise run build
-bin/bang check deploy/config.local.yaml
+bin/bang check deploy/config.local.toml
 ```
 
 Typing the start of a shortcut offers the shortcuts that begin with it. A rule
@@ -71,7 +82,7 @@ Run `mise tasks` for the current task list. Run `mise run` to choose a task
 interactively. Task definitions and tool versions live in [mise.toml][tasks].
 
 [browsers]: ./docs/browsers.md
-[config]: ./deploy/config.yaml
+[config]: ./deploy/config.toml
 [docs]: ./docs/readme.md
 [mise]: https://mise.jdx.dev/
 [tasks]: ./mise.toml

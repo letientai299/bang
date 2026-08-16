@@ -14,17 +14,17 @@ import (
 	"slices"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // Config is the on-disk rule set. It is reloaded on every write to the file; a
 // config that fails to parse is rejected and the previous one stays live, so a
 // typo can never take down the address bar.
 type Config struct {
-	Listen   string            `yaml:"listen"`
-	Fallback string            `yaml:"fallback"`
-	Vars     map[string]string `yaml:"vars"`
-	Rules    []Rule            `yaml:"rules"`
+	Listen   string
+	Fallback string
+	Vars     map[string]string
+	Rules    []Rule
 
 	literalRules map[string]int
 	regexRules   []int
@@ -33,22 +33,32 @@ type Config struct {
 // Rule maps one address-bar pattern to one destination. Match is compiled
 // anchored, so it claims a query only when it matches the whole of it.
 type Rule struct {
-	Match string `yaml:"match"`
-	To    string `yaml:"to"`
-	Desc  string `yaml:"desc"`
+	Match string
+	To    string
+	Desc  string
 
 	// Expanded is To with vars substituted and capture refs left as they were
 	// written. It is what a rule has to show a reader who is deciding whether
 	// it is the one they want: To alone hides the destination behind a var
 	// name, and the resolved target only exists once a query has been matched.
-	// It is filled in at load time, and `-` keeps it out of the config file.
-	Expanded string `yaml:"-"`
+	// It is filled in at load time and never read from the config file.
+	Expanded string
 
 	re         *regexp.Regexp
 	prefix     string
 	target     string
 	targetSize int
 	parts      []targetPart
+}
+
+// diskConfig is the deliberately small TOML surface. Rules are positional so
+// the common case stays on one line: [match, target], with an optional third
+// description. Load normalizes them into Rule before validation and use.
+type diskConfig struct {
+	Listen   string            `toml:"listen"`
+	Fallback string            `toml:"fallback"`
+	Vars     map[string]string `toml:"vars"`
+	Rules    [][]string        `toml:"rules"`
 }
 
 type targetPart struct {
@@ -126,11 +136,29 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	var c Config
-	dec := yaml.NewDecoder(bytes.NewReader(raw))
-	dec.KnownFields(true)
-	if err := dec.Decode(&c); err != nil {
+	var disk diskConfig
+	dec := toml.NewDecoder(bytes.NewReader(raw)).DisallowUnknownFields()
+	if err := dec.Decode(&disk); err != nil {
 		return nil, err
+	}
+
+	c := Config{
+		Listen:   disk.Listen,
+		Fallback: disk.Fallback,
+		Vars:     disk.Vars,
+		Rules:    make([]Rule, len(disk.Rules)),
+	}
+	for i, tuple := range disk.Rules {
+		if len(tuple) < 2 || len(tuple) > 3 {
+			return nil, fmt.Errorf(
+				"rule %d: want [match, target] or [match, target, description]",
+				i+1,
+			)
+		}
+		c.Rules[i] = Rule{Match: tuple[0], To: tuple[1]}
+		if len(tuple) == 3 {
+			c.Rules[i].Desc = tuple[2]
+		}
 	}
 
 	c.Listen = cmp.Or(c.Listen, SafeFallback().Listen)
@@ -145,7 +173,7 @@ func Load(path string) (*Config, error) {
 	for i := range c.Rules {
 		r := &c.Rules[i]
 		if r.Match == "" || r.To == "" {
-			return nil, fmt.Errorf("rule %d: both match and to are required", i+1)
+			return nil, fmt.Errorf("rule %d: both match and target are required", i+1)
 		}
 		// A query is trimmed before it is matched, so a pattern padded with
 		// space can never fire. Saying so beats leaving a rule that silently

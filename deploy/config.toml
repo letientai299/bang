@@ -1,0 +1,31 @@
+# bang — address-bar shortcuts. Saved changes reload instantly; a config that
+# fails to parse is rejected and the running one stays live.
+#
+# Rules are tried in order, first match wins. Each rule is [match, target] or
+# [match, target, description]. Patterns are anchored implicitly, so `pr`
+# matches only the exact string "pr". Capture groups are $1..$9 and are
+# percent-encoded for a query parameter; write ${1:path} for a path segment or
+# ${1:raw} to substitute the capture as typed. {{name}} refers to vars below.
+
+listen = '127.0.0.1:8111'
+fallback = 'https://www.google.com/search?q={{q}}'
+
+rules = [
+  ['pr', '{{go_repo}}/pulls', 'Open Go pull requests'],
+
+  # GitHub redirects /issues/N to /pull/N when N is a pull request.
+  ['#(\d+)', '{{go_repo}}/issues/$1', 'Go issue or pull request by number'],
+  ['is', '{{go_repo}}/issues', 'Go issues'],
+
+  # ${1:raw} keeps the slashes in a file path. A bare $1 would escape them to
+  # %2F and land on a 404 instead of the file.
+  ['f (.+)', '{{go_repo}}/blob/master/${1:raw}', 'Open a file in the Go repo'],
+  ['m', 'https://music.youtube.com/', 'YouTube Music'],
+  ['hn', 'https://news.ycombinator.com/', 'Hacker News'],
+  ['m (.+)', 'https://music.youtube.com/search?q=$1', 'Search YouTube Music'],
+  ['y (.+)', 'https://www.youtube.com/results?search_query=$1', 'Search YouTube'],
+]
+
+[vars]
+gh = 'https://github.com'
+go_repo = '{{gh}}/golang/go'

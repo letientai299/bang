@@ -26,7 +26,7 @@ func main() {
 		os.Exit(check(os.Args[2:]))
 	}
 
-	path := flag.String("config", defaultConfigPath(), "path to config.yaml")
+	path := flag.String("config", defaultConfigPath(), "path to config.toml")
 	// Off by default: as the default search engine this process sees every
 	// query typed into the address bar, and none of it is worth writing down.
 	verbose := flag.Bool("v", false, "log every query and where it resolved")
@@ -134,9 +134,9 @@ func defaultConfigPath() string {
 	if dir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "config.yaml"
+			return "config.toml"
 		}
 		dir = filepath.Join(home, ".config")
 	}
-	return filepath.Join(dir, "bang", "config.yaml")
+	return filepath.Join(dir, "bang", "config.toml")
 }

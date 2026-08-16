@@ -18,13 +18,13 @@ The container serves `127.0.0.1:9111`, leaving 8111 to `mise run dev`, so the
 always-on instance and a development server can run side by side. Point the
 browser at whichever one you mean.
 
-The first run creates `deploy/config.local.yaml` from `deploy/config.yaml`. That
+The first run creates `deploy/config.local.toml` from `deploy/config.toml`. That
 file is the container's config and is gitignored, so local shortcuts stay out of
 the repo. Container loopback is separate from host loopback, so the seeded copy
 listens on all container interfaces:
 
-```yaml
-listen: 0.0.0.0:9111
+```toml
+listen = '0.0.0.0:9111'
 ```
 
 The published port binds host loopback only, so nothing outside the machine can
@@ -32,7 +32,7 @@ reach it. The image runs as an unprivileged user, so the config must be
 world-readable:
 
 ```sh
-chmod 644 deploy/config.local.yaml
+chmod 644 deploy/config.local.toml
 ```
 
 ## Operate it

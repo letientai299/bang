@@ -1,4 +1,4 @@
-// Package configtest builds configs from literal YAML. Both the config and web
+// Package configtest builds configs from literal TOML. Both the config and web
 // tests need a loaded rule set, and Load is only reachable through a real file,
 // so the temp-file dance lives here rather than in each test package.
 package configtest
@@ -15,20 +15,17 @@ import (
 // real config — a bare sigil, a prefixed sigil, an optional separator, and a
 // bare word — because those are the cases anchoring has to get right.
 const Sample = `
-fallback: https://www.google.com/search?q={{q}}
-vars:
-  gl: https://gitlab.com
-  repo: g/main
-rules:
-  - match: '!(\d+)'
-    to: '{{gl}}/{{repo}}/-/merge_requests/$1'
-  - match: 'p!(\d+)'
-    to: '{{gl}}/g/platform/-/merge_requests/$1'
-  - match: 'gh#?(\d+)'
-    to: 'https://github.com/u/r/issues/$1'
-  - match: 'mr'
-    to: '{{gl}}/{{repo}}/-/merge_requests'
-    desc: Open merge requests
+fallback = 'https://www.google.com/search?q={{q}}'
+rules = [
+  ['!(\d+)', '{{gl}}/{{repo}}/-/merge_requests/$1'],
+  ['p!(\d+)', '{{gl}}/g/platform/-/merge_requests/$1'],
+  ['gh#?(\d+)', 'https://github.com/u/r/issues/$1'],
+  ['mr', '{{gl}}/{{repo}}/-/merge_requests', 'Open merge requests'],
+]
+
+[vars]
+gl = 'https://gitlab.com'
+repo = 'g/main'
 `
 
 // SampleDesc is the desc of Sample's "mr" rule. Only one rule carries one, so
@@ -44,12 +41,12 @@ const (
 	Google   = "https://www.google.com/search?q="
 )
 
-// Load writes yaml to a temp file and loads it, failing the test if it does not
+// Load writes TOML to a temp file and loads it, failing the test if it does not
 // parse.
-func Load(t *testing.T, yaml string) *config.Config {
+func Load(t *testing.T, tomlText string) *config.Config {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(tomlText), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, err := config.Load(path)

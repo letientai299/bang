@@ -20,7 +20,7 @@ Use the development task to rebuild and restart bang when Go files change:
 mise run dev
 ```
 
-It loads `deploy/config.yaml` and enables verbose query logging. Config changes
+It loads `deploy/config.toml` and enables verbose query logging. Config changes
 reload in the running process, so they do not trigger a restart.
 
 Open <http://127.0.0.1:8111/> to inspect loaded rules. Use `/resolve` for a dry
@@ -58,7 +58,7 @@ Start with the resolver, then move outward to the browser:
 2. Call `/resolve` with the failing query. The response reports whether a rule
    matched, the selected pattern, and the target URL. `/suggest` shows what the
    address bar would offer for the same input.
-3. Inspect the rule order and regular expression in `deploy/config.yaml`
+3. Inspect the rule order and regular expression in `deploy/config.toml`
 4. Follow the browser-specific checks in [browsers.md][browsers]
 
 An invalid config at startup leaves bang in fallback-only mode. An invalid hot
