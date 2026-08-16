@@ -69,10 +69,23 @@ config="${XDG_CONFIG_HOME:-$HOME/.config}/bang/config.yaml"
 
 # --bare keeps the tag at $KO_DOCKER_REPO instead of appending the Go import
 # path, so the image is plain `ko.local/bang`. Needs a running Docker daemon.
+# ko loads the image through the Docker Go SDK, which reads DOCKER_HOST but
+# ignores `docker context`. Providers that do not symlink /var/run/docker.sock
+# (OrbStack, Colima, Podman) therefore fail the load with "no such file or
+# directory" even though the docker CLI itself works, so resolve the active
+# context's endpoint and hand it over explicitly. An already-set DOCKER_HOST
+# wins, matching how the CLI resolves the same precedence.
+#
+# The Go format string is wrapped in a raw block because mise renders task
+# scripts through Tera, which would otherwise parse the {{ }} as its own
+# template syntax and fail the config.
 [tasks.image]
 description = "Build a container image with ko (see docs/deploy.md)"
 env.KO_DOCKER_REPO = "ko.local/bang"
-run = "ko build --local --bare --platform=linux/$(go env GOARCH) ."
+run = """
+export DOCKER_HOST="${DOCKER_HOST:-$(docker context inspect --format '{% raw %}{{ .Endpoints.docker.Host }}{% endraw %}')}"
+ko build --local --bare --platform=linux/$(go env GOARCH) .
+"""
 
 [tasks.clean]
 description = "Remove build output"

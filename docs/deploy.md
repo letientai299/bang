@@ -53,7 +53,9 @@ above. Config edits reload without restarting the job.
 ## Run a container
 
 The image is built with [ko][ko] and uses the non-root [Chainguard static
-image][chainguard-static]. A running Docker daemon is required.
+image][chainguard-static]. A running Docker daemon is required. The image is
+loaded into the daemon of the active `docker context`; set `DOCKER_HOST` to
+override that.
 
 ```sh
 mise run image
