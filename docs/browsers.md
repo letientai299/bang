@@ -2,10 +2,10 @@
 
 bang has to be the browser's **default search engine**, not a keyword shortcut.
 Keyword shortcuts all require a Tab or a Space before the query, so they cannot
-express bare input like `!313`. The default engine is the only hook that sees
+express bare input like `#123`. The default engine is the only hook that sees
 the address bar with no delimiter in front of it.
 
-Start bang first — see [deployment.md][deployment] — then open
+Start bang first by following [deploy.md][deploy], then open
 <http://127.0.0.1:8111/>. That page detects your browser and shows the same
 steps as below, lists the rules that are loaded, and has a box for trying a
 shortcut without navigating anywhere.
@@ -36,7 +36,7 @@ OpenSearch descriptor is the underlying template syntax for the same thing.
 ### Single-word input opens a hostname prompt
 
 Chrome guesses that a bare single token might be an intranet host, so a rule
-like `mr` can trigger a "did you mean to go to mr" prompt instead of resolving.
+like `pr` can trigger a "did you mean to go to pr" prompt instead of resolving.
 Typing a trailing space before Enter forces it to be treated as a search.
 Two-character shortcuts avoid the ambiguity entirely.
 
@@ -56,8 +56,8 @@ silently.
    and choose **Add "bang"**.
 3. Go to Settings → Search → **Default Search Engine** and pick **bang**.
 
-If autodiscovery is not offered, Firefox 140 and later can [add an engine by
-hand][firefox-search]: Settings → Search → **Add search engine**, with URL
+If autodiscovery is not offered, [add the engine by hand][firefox-search]:
+Settings → Search → **Add search engine**, with URL
 `http://127.0.0.1:8111/?q=%s`.
 
 Autodiscovery is fussy: Firefox rejects the descriptor unless its `ShortName`
@@ -69,7 +69,7 @@ reload with a hard refresh.
 ### Bare keywords must be allowed to search
 
 Firefox only sends non-URL input to the search engine when `keyword.enabled` is
-true. It is the default; if a shortcut like `mr` is being treated as a hostname,
+true. It is the default; if a shortcut like `pr` is being treated as a hostname,
 check it in `about:config`.
 
 Search suggestions stay empty because bang serves no suggestions endpoint. That
@@ -91,7 +91,7 @@ are anchored, so suspect a `.*` in one of them.
 Without navigating anywhere:
 
 ```sh
-curl -s 'http://127.0.0.1:8111/resolve?q=p%21313'
+curl -s 'http://127.0.0.1:8111/resolve?q=%23123'
 ```
 
 `"matched":false` means no rule claimed the query and it fell through to the
@@ -102,12 +102,12 @@ fallback engine.
 bang is `http://`, not `https://`. Browsers treat loopback as a secure context,
 so this does not block anything, but the settings UI may still label it.
 
-### `gh#12` loses everything after the `#`
+### `#123` loses everything after the `#`
 
 It does not. Once the browser has decided the input is a search query, `#` is
 percent-encoded to `%23` on the way out, so the fragment never gets stripped.
 
-[deployment]: ./deployment.md
+[deploy]: ./deploy.md
 [firefox-search]:
   https://support.mozilla.org/en-US/kb/add-or-remove-search-engine-firefox
 [opensearch]: https://developer.mozilla.org/en-US/docs/Web/XML/Guides/OpenSearch

@@ -56,7 +56,7 @@ alias = "d"
 run = "watchexec --restart --exts go -- 'go build -o bin/bang-dev . && exec bin/bang-dev -config deploy/config.yaml -v'"
 
 [tasks.install]
-description = "Install the binary and launchd agent (see docs/deployment.md)"
+description = "Install the binary and config (see docs/deploy.md)"
 depends = ["build"]
 run = """
 mkdir -p "$HOME/.local/bin" "$HOME/.config/bang"
@@ -67,7 +67,7 @@ install -m 0755 bin/bang "$HOME/.local/bin/bang"
 # --bare keeps the tag at $KO_DOCKER_REPO instead of appending the Go import
 # path, so the image is plain `ko.local/bang`. Needs a running Docker daemon.
 [tasks.image]
-description = "Build a container image with ko (see docs/deployment.md)"
+description = "Build a container image with ko (see docs/deploy.md)"
 env.KO_DOCKER_REPO = "ko.local/bang"
 run = "ko build --local --bare --platform=linux/$(go env GOARCH) ."
 
