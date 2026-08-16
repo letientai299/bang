@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"encoding/json"
@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/taile/bang/internal/config"
+	"github.com/taile/bang/internal/config/configtest"
 )
 
 // Real user agents: Chrome's contains "Safari" and Edge's contains "Chrome",
@@ -24,22 +27,22 @@ const (
 const (
 	testHost = "127.0.0.1:8111"
 	testBase = "http://" + testHost
-	mrTarget = "https://gitlab.com/g/main/-/merge_requests/313"
+	mrTarget = configtest.MainMR + "/313"
 )
 
-func testServer(t *testing.T) *server {
+func testHandler(t *testing.T) http.Handler {
 	t.Helper()
-	var live atomic.Pointer[Config]
-	live.Store(load(t, testConfig))
-	return &server{live: &live}
+	var live atomic.Pointer[config.Config]
+	live.Store(configtest.Load(t, configtest.Sample))
+	return Handler(&live, false)
 }
 
-func get(t *testing.T, s *server, path, ua string) *http.Response {
+func get(t *testing.T, path, ua string) *http.Response {
 	t.Helper()
-	return do(t, s, http.MethodGet, path, testHost, ua)
+	return do(t, http.MethodGet, path, testHost, ua)
 }
 
-func do(t *testing.T, s *server, method, path, host, ua string) *http.Response {
+func do(t *testing.T, method, path, host, ua string) *http.Response {
 	t.Helper()
 	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)
 	req.Host = host
@@ -47,12 +50,12 @@ func do(t *testing.T, s *server, method, path, host, ua string) *http.Response {
 		req.Header.Set("User-Agent", ua)
 	}
 	w := httptest.NewRecorder()
-	s.routes().ServeHTTP(w, req)
+	testHandler(t).ServeHTTP(w, req)
 	return w.Result()
 }
 
 func TestOpenSearchDescriptor(t *testing.T) {
-	resp := get(t, testServer(t), "/opensearch.xml", "")
+	resp := get(t, "/opensearch.xml", "")
 
 	// Firefox refuses the plugin outright without this exact content type.
 	const wantType = "application/opensearchdescription+xml"
@@ -91,7 +94,7 @@ func TestOpenSearchDescriptor(t *testing.T) {
 }
 
 func TestOnboardingAdvertisesDescriptor(t *testing.T) {
-	body := readAll(t, get(t, testServer(t), "/", ""))
+	body := readAll(t, get(t, "/", ""))
 
 	// The link must carry an absolute href and a title equal to ShortName, or
 	// Chrome ignores it and Firefox rejects it respectively.
@@ -122,7 +125,7 @@ func TestOnboardingIsBrowserSpecific(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := readAll(t, get(t, testServer(t), "/", tt.ua))
+			body := readAll(t, get(t, "/", tt.ua))
 			if !strings.Contains(body, tt.want) {
 				t.Errorf("page does not mention %q", tt.want)
 			}
@@ -148,8 +151,6 @@ func TestDetectBrowser(t *testing.T) {
 }
 
 func TestResolveEndpointDoesNotRedirect(t *testing.T) {
-	const googleTarget = "https://www.google.com/search?q=hello+world"
-
 	tests := []struct {
 		name        string
 		q           string
@@ -157,12 +158,11 @@ func TestResolveEndpointDoesNotRedirect(t *testing.T) {
 		wantTarget  string
 	}{
 		{"match", "!313", true, mrTarget},
-		{"fallthrough", "hello world", false, googleTarget},
+		{"fallthrough", "hello world", false, configtest.Google + "hello+world"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path := "/resolve?q=" + url.QueryEscape(tt.q)
-			resp := get(t, testServer(t), path, "")
+			resp := get(t, "/resolve?q="+url.QueryEscape(tt.q), "")
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want 200 (a dry run must not redirect)",
 					resp.StatusCode)
@@ -183,7 +183,7 @@ func TestResolveEndpointDoesNotRedirect(t *testing.T) {
 }
 
 func TestRootStillRedirectsWithQuery(t *testing.T) {
-	resp := get(t, testServer(t), "/?q="+url.QueryEscape("!313"), "")
+	resp := get(t, "/?q="+url.QueryEscape("!313"), "")
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("status = %d, want 302", resp.StatusCode)
 	}
@@ -209,8 +209,7 @@ func TestOnlyKnownRoutesAreServed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := testServer(t)
-			resp := do(t, s, tt.method, tt.path, testHost, "")
+			resp := do(t, tt.method, tt.path, testHost, "")
 			if resp.StatusCode != tt.want {
 				t.Errorf("status = %d, want %d", resp.StatusCode, tt.want)
 			}
@@ -237,8 +236,7 @@ func TestNonLoopbackHostIsRejected(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := testServer(t)
-			resp := do(t, s, http.MethodGet, "/", tt.host, "")
+			resp := do(t, http.MethodGet, "/", tt.host, "")
 			if resp.StatusCode != tt.want {
 				t.Errorf("Host %q: status = %d, want %d",
 					tt.host, resp.StatusCode, tt.want)

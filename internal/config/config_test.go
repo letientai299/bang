@@ -1,50 +1,22 @@
-package main
+package config_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/taile/bang/internal/config"
+	"github.com/taile/bang/internal/config/configtest"
 )
 
-func load(t *testing.T, yaml string) *Config {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
-	return c
-}
-
-const testConfig = `
-fallback: https://www.google.com/search?q={{q}}
-vars:
-  gl: https://gitlab.com
-  repo: g/main
-rules:
-  - match: '!(\d+)'
-    to: '{{gl}}/{{repo}}/-/merge_requests/$1'
-  - match: 'p!(\d+)'
-    to: '{{gl}}/g/platform/-/merge_requests/$1'
-  - match: 'gh#?(\d+)'
-    to: 'https://github.com/u/r/issues/$1'
-  - match: 'mr'
-    to: '{{gl}}/{{repo}}/-/merge_requests'
-`
-
-// Prefixes of the URLs testConfig resolves to, so the table below fits on one
-// line per case and the interesting part of each expectation stays visible.
 const (
-	mainMR   = "https://gitlab.com/g/main/-/merge_requests"
-	platform = "https://gitlab.com/g/platform/-/merge_requests"
-	google   = "https://www.google.com/search?q="
+	mainMR   = configtest.MainMR
+	platform = configtest.Platform
+	google   = configtest.Google
 )
 
 func TestResolve(t *testing.T) {
-	c := load(t, testConfig)
+	c := configtest.Load(t, configtest.Sample)
 
 	tests := []struct {
 		name string
@@ -79,14 +51,14 @@ func TestResolve(t *testing.T) {
 func TestFirstMatchWins(t *testing.T) {
 	// "!(\d+)" would also match "p!313" if it were not anchored, so ordering
 	// plus anchoring together must send it to the platform repo.
-	c := load(t, testConfig)
+	c := configtest.Load(t, configtest.Sample)
 	if got, want := c.Resolve("p!313"), platform+"/313"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestCapturesAreEscaped(t *testing.T) {
-	c := load(t, `
+	c := configtest.Load(t, `
 fallback: https://www.google.com/search?q={{q}}
 rules:
   - match: 'x (.+)'
@@ -100,7 +72,7 @@ rules:
 
 func TestSubstitutedTextIsNotRescanned(t *testing.T) {
 	// A captured "{{gl}}" must survive as literal text, not expand into a var.
-	c := load(t, `
+	c := configtest.Load(t, `
 fallback: https://www.google.com/search?q={{q}}
 vars:
   gl: https://gitlab.com
@@ -136,7 +108,7 @@ func TestBadConfigIsRejected(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := LoadConfig(path); err == nil {
+			if _, err := config.Load(path); err == nil {
 				t.Error("expected an error, got nil")
 			}
 		})
@@ -144,7 +116,7 @@ func TestBadConfigIsRejected(t *testing.T) {
 }
 
 func TestSafeFallbackResolves(t *testing.T) {
-	c := SafeFallback()
+	c := config.SafeFallback()
 	if got, want := c.Resolve("hello world"), google+"hello+world"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

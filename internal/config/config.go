@@ -1,4 +1,7 @@
-package main
+// Package config parses the on-disk rule set and resolves address-bar queries
+// against it. It is the half of bang that decides where a query goes; see
+// internal/web for the half that speaks HTTP.
+package config
 
 import (
 	"bytes"
@@ -24,6 +27,8 @@ type Config struct {
 	Rules    []Rule            `yaml:"rules"`
 }
 
+// Rule maps one address-bar pattern to one destination. Match is compiled
+// anchored, so it claims a query only when it matches the whole of it.
 type Rule struct {
 	Match string `yaml:"match"`
 	To    string `yaml:"to"`
@@ -47,7 +52,8 @@ func SafeFallback() *Config {
 // — a captured query containing "{{gl}}" must not expand into a var.
 var placeholder = regexp.MustCompile(`\$([1-9])|\{\{(\w+)\}\}`)
 
-func LoadConfig(path string) (*Config, error) {
+// Load reads and validates the rule set at path.
+func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

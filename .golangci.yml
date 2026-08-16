@@ -77,7 +77,7 @@ linters:
 
       # The config path is a CLI flag chosen by whoever starts the process, not
       # request input.
-      - path: config\.go
+      - path: internal/config/config\.go
         linters:
           - gosec
         text: "G304"
@@ -85,17 +85,13 @@ linters:
       # The redirect target is built from the operator's own rules file. Being
       # an open redirect is the entire point of a resolver, and the fallback
       # branch is what keeps unmatched queries reaching a real search engine.
-      - path: web\.go
-        linters:
-          - gosec
-        text: "G710"
-
+      #
       # -v logging is opt-in and local. The query is printed with %q, which
       # escapes the newlines that would make log injection possible.
-      - path: web\.go
+      - path: internal/web/web\.go
         linters:
           - gosec
-        text: "G706"
+        text: "G710|G706"
 
 formatters:
   enable:

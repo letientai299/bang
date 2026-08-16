@@ -70,6 +70,12 @@ else is a `404`.
 
 ## Development
 
+`main.go` is wiring only — flags, the initial load, and the listener. The two
+halves live under `internal`: `config` parses the rule set, watches the file,
+and decides where a query goes; `web` is the HTTP surface and knows nothing
+about how a rule is matched. Everything else at the top level is toolchain
+config, with the example config and launchd template under `deploy`.
+
 Tooling is pinned in `mise.toml`; `mise install` fetches it.
 
 | Task             | What it does                                           |
@@ -78,7 +84,7 @@ Tooling is pinned in `mise.toml`; `mise install` fetches it.
 | `mise run test`  | `go test` with race, shuffle, and coverage             |
 | `mise run lint`  | [golangci-lint][golangci] and [shellcheck][shellcheck] |
 | `mise run fmt`   | Formats Go, shell, and prose                           |
-| `mise run serve` | Runs against the repo's `config.yaml`, verbose         |
+| `mise run serve` | Runs against `deploy/config.yaml`, verbose             |
 | `mise run image` | Builds the container image with ko                     |
 
 Use `mise run <task>`, not `mise <task>` — mise has built-in `fmt` and `run`
