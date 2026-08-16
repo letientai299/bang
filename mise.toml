@@ -82,6 +82,10 @@ description = "Run the Go test suite"
 alias = "t"
 run = "go test -race -cover -count=1 -shuffle=on -timeout=5m ./..."
 
+[tasks.bench]
+description = "Benchmark shortcut resolution"
+run = "go test ./internal/config -run '^$' -bench '^BenchmarkResolve' -benchmem"
+
 # -- lint / fmt --
 
 [tasks.lint]

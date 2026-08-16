@@ -156,9 +156,16 @@ func TestResolveEndpointDoesNotRedirect(t *testing.T) {
 		q           string
 		wantMatched bool
 		wantTarget  string
+		wantRule    string
 	}{
-		{"match", "!313", true, mrTarget},
-		{"fallthrough", "hello world", false, configtest.Google + "hello+world"},
+		{"match", "!313", true, mrTarget, `!(\d+)`},
+		{
+			"fallthrough",
+			"hello world",
+			false,
+			configtest.Google + "hello+world",
+			"",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -170,13 +177,22 @@ func TestResolveEndpointDoesNotRedirect(t *testing.T) {
 			var out struct {
 				Target  string `json:"target"`
 				Matched bool   `json:"matched"`
+				Rule    string `json:"rule"`
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 				t.Fatal(err)
 			}
-			if out.Matched != tt.wantMatched || out.Target != tt.wantTarget {
-				t.Errorf("got matched=%v target=%q, want matched=%v target=%q",
-					out.Matched, out.Target, tt.wantMatched, tt.wantTarget)
+			if out.Matched != tt.wantMatched || out.Target != tt.wantTarget ||
+				out.Rule != tt.wantRule {
+				t.Errorf(
+					"got matched=%v target=%q rule=%q, want matched=%v target=%q rule=%q",
+					out.Matched,
+					out.Target,
+					out.Rule,
+					tt.wantMatched,
+					tt.wantTarget,
+					tt.wantRule,
+				)
 			}
 		})
 	}

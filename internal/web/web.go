@@ -103,11 +103,11 @@ func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	c := s.live.Load()
 	q := r.URL.Query().Get("q")
-	matched, rule := c.Match(q)
+	target, matched, rule := c.ResolveMatch(q)
 	w.Header().Set("Content-Type", "application/json")
 	err := json.NewEncoder(w).Encode(map[string]any{
 		"query":   q,
-		"target":  c.Resolve(q),
+		"target":  target,
 		"matched": matched,
 		"rule":    rule,
 	})

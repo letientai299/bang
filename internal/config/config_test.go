@@ -89,6 +89,60 @@ func TestFirstMatchWins(t *testing.T) {
 	}
 }
 
+func TestLiteralIndexPreservesRuleOrder(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{
+			name: "earlier regex wins",
+			yaml: `
+fallback: https://example.com/?q={{q}}
+rules:
+  - match: 'p.*'
+    to: https://example.com/regex
+  - match: 'pr'
+    to: https://example.com/literal
+`,
+			want: "https://example.com/regex",
+		},
+		{
+			name: "earlier literal wins",
+			yaml: `
+fallback: https://example.com/?q={{q}}
+rules:
+  - match: 'pr'
+    to: https://example.com/literal
+  - match: 'p.*'
+    to: https://example.com/regex
+`,
+			want: "https://example.com/literal",
+		},
+		{
+			name: "first duplicate literal wins",
+			yaml: `
+fallback: https://example.com/?q={{q}}
+rules:
+  - match: 'pr'
+    to: https://example.com/first
+  - match: 'pr'
+    to: https://example.com/second
+`,
+			want: "https://example.com/first",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := configtest.Load(t, tt.yaml)
+			if got := c.Resolve("pr"); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCapturesAreEscaped(t *testing.T) {
 	c := configtest.Load(t, `
 fallback: https://www.google.com/search?q={{q}}
@@ -98,6 +152,18 @@ rules:
 `)
 	got, want := c.Resolve("x a&b=c"), "https://example.com/?s=a%26b%3Dc"
 	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestOptionalCaptureCanBeEmpty(t *testing.T) {
+	c := configtest.Load(t, `
+fallback: https://example.com/?q={{q}}
+rules:
+  - match: 'x(?: (.+))?'
+    to: 'https://example.com/?q=$1'
+`)
+	if got, want := c.Resolve("x"), "https://example.com/?q="; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

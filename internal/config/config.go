@@ -26,6 +26,9 @@ type Config struct {
 	Fallback string            `yaml:"fallback"`
 	Vars     map[string]string `yaml:"vars"`
 	Rules    []Rule            `yaml:"rules"`
+
+	literalRules map[string]int
+	regexRules   []int
 }
 
 // Rule maps one address-bar pattern to one destination. Match is compiled
@@ -35,7 +38,16 @@ type Rule struct {
 	To    string `yaml:"to"`
 	Desc  string `yaml:"desc"`
 
-	re *regexp.Regexp
+	re         *regexp.Regexp
+	prefix     string
+	target     string
+	targetSize int
+	parts      []targetPart
+}
+
+type targetPart struct {
+	text    string
+	capture int
 }
 
 // SafeFallback is served when no config has ever loaded successfully. Without
@@ -80,6 +92,7 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	c.literalRules = make(map[string]int, len(c.Rules))
 	for i := range c.Rules {
 		r := &c.Rules[i]
 		if r.Match == "" || r.To == "" {
@@ -87,9 +100,11 @@ func Load(path string) (*Config, error) {
 		}
 		// Compile the pattern as written first, so a syntax error reports what
 		// the user typed rather than the anchors added below.
-		if _, err := regexp.Compile(r.Match); err != nil {
+		rawRE, err := regexp.Compile(r.Match)
+		if err != nil {
 			return nil, fmt.Errorf("rule %d: %w", i+1, err)
 		}
+		r.prefix, _ = rawRE.LiteralPrefix()
 		// Anchored implicitly: a rule that matched a substring of an ordinary
 		// search query would silently hijack real searches.
 		re, err := regexp.Compile(`\A(?:` + r.Match + `)\z`)
@@ -101,8 +116,56 @@ func Load(path string) (*Config, error) {
 		if err := c.validate(r); err != nil {
 			return nil, fmt.Errorf("rule %d (%s): %w", i+1, r.Match, err)
 		}
+		c.compileTarget(r)
+		if regexp.QuoteMeta(r.Match) == r.Match {
+			if _, exists := c.literalRules[r.Match]; !exists {
+				c.literalRules[r.Match] = i
+			}
+		} else {
+			c.regexRules = append(c.regexRules, i)
+		}
 	}
 	return &c, nil
+}
+
+// compileTarget resolves static vars and splits capture substitutions once at
+// load time. Resolve can then assemble a target without reparsing its template.
+func (c *Config) compileTarget(r *Rule) {
+	parts := make([]targetPart, 0, 4)
+	appendText := func(text string) {
+		if text == "" {
+			return
+		}
+		r.targetSize += len(text)
+		if len(parts) > 0 && parts[len(parts)-1].capture == 0 {
+			parts[len(parts)-1].text += text
+			return
+		}
+		parts = append(parts, targetPart{text: text})
+	}
+
+	last := 0
+	hasCapture := false
+	for _, loc := range placeholder.FindAllStringSubmatchIndex(r.To, -1) {
+		appendText(r.To[last:loc[0]])
+		switch {
+		case loc[2] >= 0:
+			hasCapture = true
+			parts = append(parts, targetPart{capture: int(r.To[loc[2]] - '0')})
+		default:
+			appendText(c.Vars[r.To[loc[4]:loc[5]]])
+		}
+		last = loc[1]
+	}
+	appendText(r.To[last:])
+
+	if hasCapture {
+		r.parts = parts
+		return
+	}
+	if len(parts) > 0 {
+		r.target = parts[0].text
+	}
 }
 
 // resolveVars expands references between vars. A depth-first traversal permits
@@ -198,19 +261,25 @@ func (c *Config) validate(r *Rule) error {
 	return nil
 }
 
+// ResolveMatch returns the target plus match metadata in one rule scan.
+func (c *Config) ResolveMatch(q string) (
+	target string,
+	matched bool,
+	pattern string,
+) {
+	q = strings.TrimSpace(q)
+	r, groups := c.find(q, true)
+	if r != nil {
+		return expandTarget(r, q, groups), true, r.Match
+	}
+	return strings.ReplaceAll(c.Fallback, "{{q}}", url.QueryEscape(q)), false, ""
+}
+
 // Resolve returns the URL for a raw address-bar query. It always returns a
 // usable URL: an unmatched query falls through to the configured search engine.
 func (c *Config) Resolve(q string) string {
-	q = strings.TrimSpace(q)
-	for i := range c.Rules {
-		r := &c.Rules[i]
-		groups := r.re.FindStringSubmatch(q)
-		if groups == nil {
-			continue
-		}
-		return c.expand(r.To, groups)
-	}
-	return strings.ReplaceAll(c.Fallback, "{{q}}", url.QueryEscape(q))
+	target, _, _ := c.ResolveMatch(q)
+	return target
 }
 
 // Match reports whether a rule claimed the query, and which pattern did. It
@@ -218,23 +287,59 @@ func (c *Config) Resolve(q string) string {
 // which Resolve alone cannot express.
 func (c *Config) Match(q string) (matched bool, pattern string) {
 	q = strings.TrimSpace(q)
-	for i := range c.Rules {
-		if c.Rules[i].re.MatchString(q) {
-			return true, c.Rules[i].Match
-		}
+	r, _ := c.find(q, false)
+	if r == nil {
+		return false, ""
 	}
-	return false, ""
+	return true, r.Match
 }
 
-func (c *Config) expand(tmpl string, groups []string) string {
-	return placeholder.ReplaceAllStringFunc(tmpl, func(ref string) string {
-		m := placeholder.FindStringSubmatch(ref)
-		if m[1] != "" {
-			n, _ := strconv.Atoi(m[1])
+// find checks only regex rules that could precede an exact match. This keeps
+// first-match-wins semantics while letting literal-only configs avoid regexes.
+func (c *Config) find(q string, captures bool) (rule *Rule, groups []int) {
+	literalIndex, hasLiteral := c.literalRules[q]
+	for _, i := range c.regexRules {
+		if hasLiteral && i > literalIndex {
+			break
+		}
+		r := &c.Rules[i]
+		if r.prefix != "" && !strings.HasPrefix(q, r.prefix) {
+			continue
+		}
+		if captures && len(r.parts) > 0 {
+			groups := r.re.FindStringSubmatchIndex(q)
+			if groups != nil {
+				return r, groups
+			}
+			continue
+		}
+		if r.re.MatchString(q) {
+			return r, nil
+		}
+	}
+	if hasLiteral {
+		return &c.Rules[literalIndex], nil
+	}
+	return nil, nil
+}
+
+func expandTarget(r *Rule, q string, groups []int) string {
+	if len(r.parts) == 0 {
+		return r.target
+	}
+	var target strings.Builder
+	target.Grow(r.targetSize + len(q))
+	for _, part := range r.parts {
+		if part.capture == 0 {
+			target.WriteString(part.text)
+			continue
+		}
+		start, end := groups[part.capture*2], groups[part.capture*2+1]
+		if start >= 0 {
 			// Captures come from the address bar, so they are escaped. Rules
 			// that need a raw path segment should hard-code it or use a var.
-			return url.QueryEscape(groups[n])
+			target.WriteString(url.QueryEscape(q[start:end]))
 		}
-		return c.Vars[m[2]]
-	})
+	}
+	return target.String()
 }
