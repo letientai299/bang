@@ -115,7 +115,9 @@ your default.</p>
 
 <h2>Rules</h2>
 <table>
-{{range .Rules}}<tr><td><code>{{.Match}}</code></td><td>{{.Desc}}</td></tr>
+{{/* A rule without a desc still has to say where it goes, so its target
+     stands in — the same stand-in the suggestions endpoint makes. */ -}}
+{{range .Rules}}<tr><td><code>{{.Match}}</code></td><td>{{with .Desc}}{{.}}{{else}}<code class="muted">{{.Expanded}}</code>{{end}}</td></tr>
 {{else}}<tr><td colspan="2" class="muted">None loaded.</td></tr>
 {{end}}<tr><td class="muted">anything else</td><td class="muted">{{.Fallback}}</td></tr>
 </table>

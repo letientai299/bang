@@ -271,6 +271,23 @@ func TestOnboardingIsBrowserSpecific(t *testing.T) {
 	}
 }
 
+// A rule with no desc still has to be identifiable in the table, so its target
+// stands in. Sample carries both kinds of rule.
+func TestOnboardingListsRules(t *testing.T) {
+	body := readAll(t, get(t, "/", ""))
+
+	for _, want := range []string{
+		configtest.SampleDesc,
+		// Vars expanded, so the cell names a real destination; the capture
+		// stays as typed because nothing has been queried yet.
+		configtest.MainMR + "/$1",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rule table is missing %q", want)
+		}
+	}
+}
+
 func TestDetectBrowser(t *testing.T) {
 	tests := []struct{ name, ua, want string }{
 		{"firefox", firefoxUA, "firefox"},

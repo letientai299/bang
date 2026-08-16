@@ -324,6 +324,40 @@ rules:
 	}
 }
 
+func TestExpandedTarget(t *testing.T) {
+	c := configtest.Load(t, `
+fallback: https://www.google.com/search?q={{q}}
+vars:
+  gh: https://github.com
+  repo: "{{gh}}/golang/go"
+rules:
+  - match: 'is'
+    to: '{{repo}}/issues'
+  - match: '#(\d+)'
+    to: '{{repo}}/issues/$1'
+  - match: 'f (.+)'
+    to: '{{repo}}/blob/master/${1:raw}#{{gh}}'
+`)
+
+	const (
+		gh   = "https://github.com"
+		repo = gh + "/golang/go"
+	)
+
+	tests := []struct{ name, want string }{
+		{"vars only", repo + "/issues"},
+		{"capture stays as typed", repo + "/issues/$1"},
+		{"escape and trailing var survive", repo + "/blob/master/${1:raw}#" + gh},
+	}
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := c.Rules[i].Expanded; got != tt.want {
+				t.Errorf("Expanded = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSubstitutedTextIsNotRescanned(t *testing.T) {
 	// A captured "{{gl}}" must survive as literal text, not expand into a var.
 	c := configtest.Load(t, `

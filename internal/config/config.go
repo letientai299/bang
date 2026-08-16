@@ -37,6 +37,13 @@ type Rule struct {
 	To    string `yaml:"to"`
 	Desc  string `yaml:"desc"`
 
+	// Expanded is To with vars substituted and capture refs left as they were
+	// written. It is what a rule has to show a reader who is deciding whether
+	// it is the one they want: To alone hides the destination behind a var
+	// name, and the resolved target only exists once a query has been matched.
+	// It is filled in at load time, and `-` keeps it out of the config file.
+	Expanded string `yaml:"-"`
+
 	re         *regexp.Regexp
 	prefix     string
 	target     string
@@ -181,11 +188,13 @@ func Load(path string) (*Config, error) {
 // compileTarget resolves static vars and splits capture substitutions once at
 // load time. Resolve can then assemble a target without reparsing its template.
 func (c *Config) compileTarget(r *Rule) {
+	var expanded strings.Builder
 	parts := make([]targetPart, 0, 4)
 	appendText := func(text string) {
 		if text == "" {
 			return
 		}
+		expanded.WriteString(text)
 		r.targetSize += len(text)
 		if len(parts) > 0 && parts[len(parts)-1].capture == 0 {
 			parts[len(parts)-1].text += text
@@ -201,6 +210,10 @@ func (c *Config) compileTarget(r *Rule) {
 		switch ref := decodeRef(r.To, loc); {
 		case ref.capture > 0:
 			hasCapture = true
+			// A capture has no value until a query arrives, so the expanded
+			// form carries the ref as typed — including its escape, which is
+			// part of what the rule does.
+			expanded.WriteString(r.To[loc[0]:loc[1]])
 			parts = append(parts, targetPart{
 				capture: ref.capture,
 				escape:  escapes[ref.escape],
@@ -211,14 +224,15 @@ func (c *Config) compileTarget(r *Rule) {
 		last = loc[1]
 	}
 	appendText(r.To[last:])
+	r.Expanded = expanded.String()
 
 	if hasCapture {
 		r.parts = parts
 		return
 	}
-	if len(parts) > 0 {
-		r.target = parts[0].text
-	}
+	// With no captures every part is text, and appendText merged them all into
+	// the first one, which makes it the whole expanded target.
+	r.target = r.Expanded
 }
 
 // resolveVars expands references between vars. A depth-first traversal permits
