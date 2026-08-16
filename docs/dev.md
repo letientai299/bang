@@ -53,9 +53,11 @@ The task definitions in `mise.toml` are the source of truth for the checks.
 
 Start with the resolver, then move outward to the browser:
 
-1. Run `mise run serve` and check startup or reload errors in the terminal.
+1. Run `go run . check <config>` to validate the rule set on its own, then
+   `mise run serve` and check startup or reload errors in the terminal.
 2. Call `/resolve` with the failing query. The response reports whether a rule
-   matched, the selected pattern, and the target URL.
+   matched, the selected pattern, and the target URL. `/suggest` shows what the
+   address bar would offer for the same input.
 3. Inspect the rule order and regular expression in `deploy/config.yaml`
 4. Follow the browser-specific checks in [browsers.md][browsers]
 
@@ -65,7 +67,7 @@ reload keeps the previous valid config. The error identifies the rejected rule.
 If a changed `listen` address appears to have no effect, restart bang. The
 listener is created once at startup.
 
-For a launchd installation, stream `~/Library/Logs/bang.log` and use the status
+For a launchd installation, stream `~/.cache/bang/bang.log` and use the status
 commands in [deploy.md][deploy]. For a container, inspect `docker logs bang` and
 confirm the port is published only on `127.0.0.1`.
 

@@ -20,8 +20,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>__HOME__/Library/Logs/bang.log</string>
+  <string>__LOG__</string>
   <key>StandardErrorPath</key>
-  <string>__HOME__/Library/Logs/bang.log</string>
+  <string>__LOG__</string>
 </dict>
 </plist>

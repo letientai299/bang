@@ -16,6 +16,39 @@ The page advertises an [OpenSearch][opensearch] descriptor, so both browsers
 discover the engine on their own. Neither one makes it the default, and that
 last step is what makes bare input work. Expect to finish by hand in settings.
 
+## Shortcut suggestions
+
+The descriptor also points at a suggestions endpoint, so typing the start of a
+shortcut offers the shortcuts that begin with it, straight from the live config.
+A rule is offered by its literal prefix, which for `m (.+)` is `m ` and for a
+pattern that starts with alternation, like `(a|b)`, is nothing at all — such a
+rule is never suggested.
+
+What lands in the dropdown differs by browser, because their suggestion formats
+do:
+
+- **Chrome** is sent the destination of a shortcut that needs no further input,
+  and goes there directly when the entry is picked. Anything still waiting on
+  input is offered as text to keep typing.
+- **Firefox** is only ever offered the shortcut text. A URL handed to Firefox
+  would come back as a query, match no rule, and end up searched for.
+
+Both browsers gate the request on their own setting — _Autocomplete searches and
+URLs_ under Chrome's Google services, _Provide search suggestions_ under Firefox
+Settings → Search — and Chrome never asks in Incognito. Suggestions are cosmetic
+either way: resolution and fallback do not depend on them.
+
+Chrome also declines to ask for input it does not classify as a search, which is
+the same judgement that produces the hostname prompt described below. A one-word
+shortcut may therefore offer nothing until a space follows it.
+
+The endpoint answers on the command line too, though what it returns depends on
+the `User-Agent` it is asked with, per the split above:
+
+```sh
+curl -s 'http://127.0.0.1:8111/suggest?q=m'
+```
+
 ## Chrome
 
 Chrome picks up the descriptor as soon as you open the page, and files it under
@@ -32,6 +65,9 @@ with name `bang`, shortcut `bang`, and URL `http://127.0.0.1:8111/?q=%s`.
 
 Chrome's settings UI uses `%s` for the query. The `{searchTerms}` form in the
 OpenSearch descriptor is the underlying template syntax for the same thing.
+
+The shortcut column reads `bang` because the descriptor says so. Chrome
+otherwise derives a keyword from the URL and lists the engine as `127.0.0.1`.
 
 ### Single-word input opens a hostname prompt
 
@@ -77,9 +113,6 @@ reload with a hard refresh.
 Firefox only sends non-URL input to the search engine when `keyword.enabled` is
 true. It is the default; if a shortcut like `pr` is being treated as a hostname,
 check it in `about:config`.
-
-Search suggestions stay empty because bang serves no suggestions endpoint. That
-is cosmetic — resolution and fallback are unaffected.
 
 ### Testing without touching your profile
 

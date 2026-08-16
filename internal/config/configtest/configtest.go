@@ -28,7 +28,13 @@ rules:
     to: 'https://github.com/u/r/issues/$1'
   - match: 'mr'
     to: '{{gl}}/{{repo}}/-/merge_requests'
+    desc: Open merge requests
 `
+
+// SampleDesc is the desc of Sample's "mr" rule. Only one rule carries one, so
+// the tests can check both what a description does and what stands in for a
+// missing one.
+const SampleDesc = "Open merge requests"
 
 // Targets that Sample resolves to, as prefixes, so test tables fit one case per
 // line and the part that differs per row stays visible.

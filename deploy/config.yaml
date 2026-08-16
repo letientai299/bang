@@ -3,8 +3,9 @@
 #
 # Rules are tried in order, first match wins. Patterns are anchored implicitly,
 # so `pr` matches only the exact string "pr". Capture groups are $1..$9 and are
-# percent-encoded on substitution. {{name}} refers to vars below, and vars may
-# refer to other vars when their values are quoted.
+# percent-encoded for a query parameter; write ${1:path} for a path segment or
+# ${1:raw} to substitute the capture as typed. {{name}} refers to vars below,
+# and vars may refer to other vars when their values are quoted.
 
 listen: 127.0.0.1:8111
 
@@ -27,6 +28,12 @@ rules:
   - match: "is"
     to: "{{go_repo}}/issues"
     desc: Go issues
+
+  # ${1:raw} keeps the slashes in a file path. A bare $1 would escape them to
+  # %2F and land on a 404 instead of the file.
+  - match: "f (.+)"
+    to: "{{go_repo}}/blob/master/${1:raw}"
+    desc: Open a file in the Go repo
 
   - match: "m"
     to: https://music.youtube.com/

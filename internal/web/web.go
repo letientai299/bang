@@ -19,8 +19,15 @@ import (
 // shortName must match the OpenSearch <ShortName> and the autodiscovery link's
 // title attribute; Firefox rejects the descriptor if they differ. Max 16 chars.
 const (
-	shortName            = "bang"
-	redirectCacheControl = "private, max-age=3600"
+	shortName = "bang"
+	// noStore is sent on every answer that depends on the live rule set. A 302
+	// carries no freshness of its own and is not heuristically cacheable (RFC
+	// 9111 §4.2.2), so this only has to keep it that way. Giving it a lifetime
+	// instead would strand the browser on a stale target for as long as it
+	// lasts — the reload would appear to have worked everywhere except the
+	// address bar. The loopback hop that would save measures a fraction of a
+	// millisecond, and no-store also keeps the query out of the disk cache.
+	noStore = "no-store"
 )
 
 type server struct {
@@ -40,11 +47,13 @@ func Handler(live *atomic.Pointer[config.Config], verbose bool) http.Handler {
 
 	mux := http.NewServeMux()
 	// "GET /{$}" matches the root and nothing else. A bare "/" pattern is a
-	// catch-all, so every stray path the browser probes — /favicon.ico,
-	// /.well-known/… — used to render the onboarding page with a 200.
+	// catch-all, so every stray path the browser probes — /.well-known/… —
+	// used to render the onboarding page with a 200.
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /opensearch.xml", s.handleOpenSearch)
+	mux.HandleFunc("GET /suggest", s.handleSuggest)
 	mux.HandleFunc("GET /resolve", s.handleResolve)
+	mux.HandleFunc("GET /favicon.ico", faviconICO)
 	return loopbackOnly(mux)
 }
 
@@ -54,12 +63,20 @@ func Handler(live *atomic.Pointer[config.Config], verbose bool) http.Handler {
 // which the browser treats the reply as same-origin and the page can read the
 // whole rule set. The rebound request still carries the attacker's hostname in
 // Host, so checking it closes the hole.
+//
+// The header covers what the Host check cannot: a remote page needs no reply
+// it can read to learn that bang is running here, because an <img> pointing at
+// the favicon fires onload only if something answered. Cross-Origin-Resource-
+// Policy makes that load fail like any other, so the two outcomes stop being
+// distinguishable. Chromium exempts browser-initiated requests from the policy,
+// so the favicon the browser fetches for the engine itself is unaffected.
 func loopbackOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isLoopbackHost(r.Host) {
 			http.Error(w, "bang answers on loopback only", http.StatusForbidden)
 			return
 		}
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -95,12 +112,7 @@ func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		// of the flag: it settles how the omnibox encodes characters like #.
 		log.Printf("q=%q raw=%q -> %s", q, r.URL.RawQuery, to)
 	}
-	// Keep redirects private because the query can contain sensitive text. An
-	// explicit freshness lifetime lets the browser skip this loopback hop when
-	// the exact query is repeated, without making the redirect permanent. The
-	// tradeoff is that a reloaded rule can take up to an hour to affect a query
-	// the browser already cached.
-	w.Header().Set("Cache-Control", redirectCacheControl)
+	w.Header().Set("Cache-Control", noStore)
 	http.Redirect(w, r, to, http.StatusFound)
 }
 

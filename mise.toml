@@ -59,9 +59,12 @@ run = "watchexec --restart --exts go -- 'go build -o bin/bang-dev . && exec bin/
 description = "Install the binary and config (see docs/deploy.md)"
 depends = ["build"]
 run = """
-mkdir -p "$HOME/.local/bin" "$HOME/.config/bang"
+# The cache directory is created here because launchd will not create the
+# parent of a log path and fails the job when it is missing.
+mkdir -p "$HOME/.local/bin" "${XDG_CONFIG_HOME:-$HOME/.config}/bang" "${XDG_CACHE_HOME:-$HOME/.cache}/bang"
 install -m 0755 bin/bang "$HOME/.local/bin/bang"
-[ -f "$HOME/.config/bang/config.yaml" ] || cp deploy/config.yaml "$HOME/.config/bang/config.yaml"
+config="${XDG_CONFIG_HOME:-$HOME/.config}/bang/config.yaml"
+[ -f "$config" ] || cp deploy/config.yaml "$config"
 """
 
 # --bare keeps the tag at $KO_DOCKER_REPO instead of appending the Go import

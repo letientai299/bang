@@ -12,7 +12,6 @@ import (
 	"os"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -48,6 +47,7 @@ type Rule struct {
 type targetPart struct {
 	text    string
 	capture int
+	escape  func(string) string
 }
 
 // SafeFallback is served when no config has ever loaded successfully. Without
@@ -60,10 +60,52 @@ func SafeFallback() *Config {
 	}
 }
 
-// placeholder matches both capture-group refs ($1..$9) and var refs ({{name}}).
-// Both are handled in a single pass so that substituted text is never rescanned
-// — a captured query containing "{{gl}}" must not expand into a var.
-var placeholder = regexp.MustCompile(`\$([1-9])|\{\{(\w+)\}\}`)
+// placeholder matches capture-group refs — plain ($1..$9) or annotated with an
+// escape (${1:path}) — and var refs ({{name}}). All are handled in a single
+// pass so that substituted text is never rescanned: a captured query containing
+// "{{gl}}" must not expand into a var.
+var placeholder = regexp.MustCompile(
+	`\$\{([1-9]):(\w+)\}|\$([1-9])|\{\{(\w+)\}\}`,
+)
+
+// defaultEscape is what a bare $1 means. It is right for a search parameter
+// and wrong for a path segment: QueryEscape turns "/" into %2F and a space
+// into "+", which is why the annotated form exists.
+const defaultEscape = "query"
+
+// escapes are the substitution modes a capture can be annotated with.
+var escapes = map[string]func(string) string{
+	"query": url.QueryEscape,
+	"path":  url.PathEscape,
+	"raw":   func(s string) string { return s },
+}
+
+// ref is one decoded placeholder: either a capture with the escape it asked
+// for, or the name of a var.
+type ref struct {
+	capture int
+	escape  string
+	name    string
+}
+
+// decodeRef reads one placeholder match. Validation and target compilation both
+// go through it, so which submatch means what is stated once.
+func decodeRef(to string, loc []int) ref {
+	group := func(n int) string {
+		if loc[2*n] < 0 {
+			return ""
+		}
+		return to[loc[2*n]:loc[2*n+1]]
+	}
+	switch {
+	case group(1) != "":
+		return ref{capture: int(group(1)[0] - '0'), escape: group(2)}
+	case group(3) != "":
+		return ref{capture: int(group(3)[0] - '0'), escape: defaultEscape}
+	default:
+		return ref{name: group(4)}
+	}
+}
 
 // varPlaceholder is separate from placeholder because captures have no meaning
 // inside vars. Vars are fully resolved when the config loads, before a rule
@@ -97,6 +139,14 @@ func Load(path string) (*Config, error) {
 		r := &c.Rules[i]
 		if r.Match == "" || r.To == "" {
 			return nil, fmt.Errorf("rule %d: both match and to are required", i+1)
+		}
+		// A query is trimmed before it is matched, so a pattern padded with
+		// space can never fire. Saying so beats leaving a rule that silently
+		// does nothing.
+		if strings.TrimSpace(r.Match) != r.Match {
+			return nil, fmt.Errorf(
+				"rule %d (%s): match is padded with space, which no query can carry",
+				i+1, r.Match)
 		}
 		// Compile the pattern as written first, so a syntax error reports what
 		// the user typed rather than the anchors added below.
@@ -148,12 +198,15 @@ func (c *Config) compileTarget(r *Rule) {
 	hasCapture := false
 	for _, loc := range placeholder.FindAllStringSubmatchIndex(r.To, -1) {
 		appendText(r.To[last:loc[0]])
-		switch {
-		case loc[2] >= 0:
+		switch ref := decodeRef(r.To, loc); {
+		case ref.capture > 0:
 			hasCapture = true
-			parts = append(parts, targetPart{capture: int(r.To[loc[2]] - '0')})
+			parts = append(parts, targetPart{
+				capture: ref.capture,
+				escape:  escapes[ref.escape],
+			})
 		default:
-			appendText(c.Vars[r.To[loc[4]:loc[5]]])
+			appendText(c.Vars[ref.name])
 		}
 		last = loc[1]
 	}
@@ -243,22 +296,48 @@ func (c *Config) resolveVars() error {
 // validate rejects references that could not possibly resolve at request time,
 // so mistakes surface on save rather than on a redirect to a broken URL.
 func (c *Config) validate(r *Rule) error {
-	for _, m := range placeholder.FindAllStringSubmatch(r.To, -1) {
-		switch {
-		case m[1] != "":
-			n, _ := strconv.Atoi(m[1])
-			if groups := r.re.NumSubexp(); n > groups {
-				return fmt.Errorf("$%d but pattern has %d capture groups", n, groups)
+	last := 0
+	for _, loc := range placeholder.FindAllStringSubmatchIndex(r.To, -1) {
+		if err := malformedRef(r.To[last:loc[0]]); err != nil {
+			return err
+		}
+		last = loc[1]
+		switch ref := decodeRef(r.To, loc); {
+		case ref.capture > 0:
+			if groups := r.re.NumSubexp(); ref.capture > groups {
+				return fmt.Errorf("$%d but pattern has %d capture groups",
+					ref.capture, groups)
 			}
-		case m[2] == "q":
+			if _, ok := escapes[ref.escape]; !ok {
+				return fmt.Errorf("unknown escape ${%d:%s}; use query, path, or raw",
+					ref.capture, ref.escape)
+			}
+		case ref.name == "q":
 			return errors.New("{{q}} is only valid in fallback; use a capture group")
 		default:
-			if _, ok := c.Vars[m[2]]; !ok {
-				return fmt.Errorf("undefined var {{%s}}", m[2])
+			if _, ok := c.Vars[ref.name]; !ok {
+				return fmt.Errorf("undefined var {{%s}}", ref.name)
 			}
 		}
 	}
-	return nil
+	return malformedRef(r.To[last:])
+}
+
+// malformedRef catches an annotated capture that placeholder could not read —
+// ${10:path}, ${1:path, ${1:} — in the text between the refs it did read.
+// Such a ref matches nothing, so without this it would reach the browser as
+// literal text in the URL rather than being reported on save.
+func malformedRef(text string) error {
+	i := strings.Index(text, "${")
+	if i < 0 {
+		return nil
+	}
+	ref := text[i:]
+	if end := strings.IndexByte(ref, '}'); end >= 0 {
+		ref = ref[:end+1]
+	}
+	return fmt.Errorf("malformed capture %s; write ${1:path}, or $1 to escape "+
+		"for a query parameter", ref)
 }
 
 // ResolveMatch returns the target plus match metadata in one rule scan.
@@ -280,6 +359,60 @@ func (c *Config) ResolveMatch(q string) (
 func (c *Config) Resolve(q string) string {
 	target, _, _ := c.ResolveMatch(q)
 	return target
+}
+
+// Suggestion is one entry the address bar can offer while a query is being
+// typed. Target is where Query lands if submitted as it stands, and is empty
+// when that is not yet decided — "m (.+)" can offer "m " but cannot know where
+// it goes until the rest is typed.
+type Suggestion struct {
+	Query  string
+	Desc   string
+	Target string
+}
+
+// Suggest returns up to limit rules whose typed form starts with q, in config
+// order. What a rule can offer is its literal prefix: for a literal rule that
+// is the whole pattern, and for a regex rule it is as much of it as a person
+// could type blind. A rule that does not begin with literal text — "(a|b)" —
+// has nothing to offer and is skipped.
+func (c *Config) Suggest(q string, limit int) []Suggestion {
+	q = strings.TrimSpace(q)
+	if q == "" || limit <= 0 {
+		return nil
+	}
+
+	found := make([]Suggestion, 0, limit)
+	for i := range c.Rules {
+		r := &c.Rules[i]
+		if r.prefix == "" || !strings.HasPrefix(r.prefix, q) {
+			continue
+		}
+		// A regex prefix can repeat an earlier rule verbatim, and a shadowed
+		// duplicate can never fire. Either way the second entry is noise.
+		if slices.ContainsFunc(found, func(o Suggestion) bool {
+			return o.Query == r.prefix
+		}) {
+			continue
+		}
+		s := Suggestion{Query: r.prefix, Desc: r.Desc, Target: c.settled(r.prefix)}
+		if found = append(found, s); len(found) == limit {
+			break
+		}
+	}
+	return found
+}
+
+// settled reports where q lands if it is submitted exactly as it stands, and
+// returns "" when that is not yet decided. It asks the resolver rather than
+// reading the offering rule's own target, because an earlier rule may shadow
+// it — a suggestion that names a destination has to name the real one.
+func (c *Config) settled(q string) string {
+	r, _ := c.find(q, false)
+	if r == nil || len(r.parts) > 0 {
+		return ""
+	}
+	return r.target
 }
 
 // Match reports whether a rule claimed the query, and which pattern did. It
@@ -336,9 +469,9 @@ func expandTarget(r *Rule, q string, groups []int) string {
 		}
 		start, end := groups[part.capture*2], groups[part.capture*2+1]
 		if start >= 0 {
-			// Captures come from the address bar, so they are escaped. Rules
-			// that need a raw path segment should hard-code it or use a var.
-			target.WriteString(url.QueryEscape(q[start:end]))
+			// Captures come from the address bar, so they are escaped. Which
+			// escape was decided when the rule loaded; see escapes.
+			target.WriteString(part.escape(q[start:end]))
 		}
 	}
 	return target.String()

@@ -13,9 +13,12 @@ mise install
 mise run install
 ```
 
-The task builds bang, installs it at `~/.local/bin/bang`, and creates
-`~/.config/bang/config.yaml` from `deploy/config.yaml` when no config exists.
-Run `mise tasks` to inspect the current task definitions.
+The task builds bang, installs it at `~/.local/bin/bang`, creates
+`~/.config/bang/config.yaml` from `deploy/config.yaml` when no config exists,
+and makes `~/.cache/bang` for the log. It honours `XDG_CONFIG_HOME` and
+`XDG_CACHE_HOME` where they are set, and bang looks for its config in the same
+place, so `bang` on its own finds what the task installed. Run `mise tasks` to
+inspect the current task definitions.
 
 ## Auto-start with launchd on macOS
 
@@ -23,11 +26,16 @@ The `deploy/bang.plist` template contains placeholders because a launchd job
 does not run through a shell:
 
 ```sh
-sed -e "s|__HOME__|$HOME|g" -e "s|__CONFIG__|$HOME/.config/bang/config.yaml|" \
+sed -e "s|__HOME__|$HOME|g" \
+  -e "s|__CONFIG__|${XDG_CONFIG_HOME:-$HOME/.config}/bang/config.yaml|" \
+  -e "s|__LOG__|${XDG_CACHE_HOME:-$HOME/.cache}/bang/bang.log|" \
   deploy/bang.plist > ~/Library/LaunchAgents/bang.plist
 
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/bang.plist
 ```
+
+The log path must already exist — launchd does not create the parent directory
+and fails the job when it is missing. `mise run install` makes it.
 
 The job starts at login and restarts after a crash. Use these commands to
 operate it:
@@ -36,7 +44,7 @@ operate it:
 launchctl print gui/$(id -u)/bang
 launchctl kickstart -k gui/$(id -u)/bang
 launchctl bootout gui/$(id -u)/bang
-tail -f ~/Library/Logs/bang.log
+tail -f ~/.cache/bang/bang.log
 ```
 
 After installing a rebuilt binary, run `launchctl kickstart -k` with the label

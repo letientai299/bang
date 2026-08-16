@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -81,15 +82,152 @@ func TestOpenSearchDescriptor(t *testing.T) {
 	if doc.Description == "" || doc.InputEncoding == "" {
 		t.Error("Description and InputEncoding are both required")
 	}
-	if doc.URL.Type != "text/html" {
-		t.Errorf("Url type = %q; Firefox needs text/html", doc.URL.Type)
+	// Chrome takes its keyword from Alias, and lists the engine under the host
+	// name when it is missing.
+	if doc.Alias != shortName {
+		t.Errorf("Alias = %q, want %q", doc.Alias, shortName)
 	}
-	if !strings.Contains(doc.URL.Template, "{searchTerms}") {
-		t.Errorf("Url template %q lacks {searchTerms}", doc.URL.Template)
+
+	byType := map[string]openSearchURL{}
+	for _, u := range doc.URLs {
+		byType[u.Type] = u
+		if !strings.Contains(u.Template, "{searchTerms}") {
+			t.Errorf("Url template %q lacks {searchTerms}", u.Template)
+		}
+		// Chrome ignores a descriptor whose template is not absolute.
+		if !strings.HasPrefix(u.Template, testBase+"/") {
+			t.Errorf("Url template %q is not absolute", u.Template)
+		}
 	}
-	// Chrome ignores a descriptor whose template is not absolute.
-	if !strings.HasPrefix(doc.URL.Template, testBase+"/") {
-		t.Errorf("Url template %q is not absolute", doc.URL.Template)
+	for _, want := range []string{"text/html", suggestionType} {
+		if _, ok := byType[want]; !ok {
+			t.Errorf("descriptor has no %s Url", want)
+		}
+	}
+	// Chrome will not call a suggestions endpoint that shares the search URL.
+	if byType[suggestionType].Template == byType["text/html"].Template {
+		t.Errorf("suggestions and search share the template %q",
+			byType["text/html"].Template)
+	}
+}
+
+func TestSuggestions(t *testing.T) {
+	// Sample has one literal rule, "mr", and three regex rules whose literal
+	// prefixes are "!", "p!", and "gh".
+	tests := []struct {
+		name      string
+		q, ua     string
+		wantTexts []string
+		wantDescs []string
+		wantMeta  bool
+		wantTypes []string
+	}{
+		{
+			name:      "literal rule offers its target to chrome",
+			q:         "m",
+			ua:        chromeUA,
+			wantTexts: []string{configtest.MainMR},
+			// Chrome titles a navigation entry with the description.
+			wantDescs: []string{configtest.SampleDesc},
+			wantMeta:  true,
+			wantTypes: []string{"NAVIGATION"},
+		},
+		{
+			name: "firefox is offered the shortcut instead",
+			// A URL sent back as a query would match no rule and land on the
+			// fallback engine, so Firefox must never be given one.
+			q:         "m",
+			ua:        firefoxUA,
+			wantTexts: []string{"mr"},
+			wantDescs: []string{configtest.SampleDesc},
+		},
+		{
+			name:      "a regex rule can only offer its prefix",
+			q:         "p",
+			ua:        chromeUA,
+			wantTexts: []string{"p!"},
+			// Sample's regex rules carry no desc, so the shortcut stands in.
+			wantDescs: []string{"p!"},
+			wantMeta:  true,
+			wantTypes: []string{"QUERY"},
+		},
+		{
+			name:      "an unknown browser gets the safe form",
+			q:         "g",
+			ua:        "curl/8.7.1",
+			wantTexts: []string{"gh"},
+			wantDescs: []string{"gh"},
+		},
+		{name: "no match suggests nothing", q: "zzz", ua: chromeUA, wantMeta: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := get(t, "/suggest?q="+url.QueryEscape(tt.q), tt.ua)
+			if got := resp.Header.Get("Content-Type"); got != suggestionType {
+				t.Errorf("Content-Type = %q, want %q", got, suggestionType)
+			}
+
+			var out []json.RawMessage
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+
+			// Chrome discards the whole response when element 0 is not exactly
+			// what was typed.
+			var echoed string
+			mustUnmarshal(t, out[0], &echoed)
+			if echoed != tt.q {
+				t.Errorf("echoed query = %q, want %q", echoed, tt.q)
+			}
+
+			var texts, descs []string
+			mustUnmarshal(t, out[1], &texts)
+			mustUnmarshal(t, out[2], &descs)
+			if !slices.Equal(texts, tt.wantTexts) {
+				t.Errorf("suggestions = %q, want %q", texts, tt.wantTexts)
+			}
+			if !slices.Equal(descs, tt.wantDescs) {
+				t.Errorf("descriptions = %q, want %q", descs, tt.wantDescs)
+			}
+
+			if !tt.wantMeta {
+				if len(out) > 4 {
+					t.Errorf("metadata sent to a browser that cannot read it: %s",
+						out[4])
+				}
+				return
+			}
+			var meta struct {
+				Types []string `json:"google:suggesttype"`
+			}
+			mustUnmarshal(t, out[4], &meta)
+			if !slices.Equal(meta.Types, tt.wantTypes) {
+				t.Errorf("suggest types = %q, want %q", meta.Types, tt.wantTypes)
+			}
+		})
+	}
+}
+
+func TestFaviconIsServed(t *testing.T) {
+	resp := get(t, "/favicon.ico", "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	// Chrome derives this path from the search URL and decodes by sniffing, so
+	// PNG bytes under an .ico name are what it expects to find.
+	if got := resp.Header.Get("Content-Type"); got != "image/png" {
+		t.Errorf("Content-Type = %q, want image/png", got)
+	}
+	if body := readAll(t, resp); !strings.HasPrefix(body, "\x89PNG") {
+		t.Error("body is not a PNG")
+	}
+}
+
+func mustUnmarshal(t *testing.T, raw json.RawMessage, into any) {
+	t.Helper()
+	if err := json.Unmarshal(raw, into); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -206,8 +344,11 @@ func TestRootStillRedirectsWithQuery(t *testing.T) {
 	if got := resp.Header.Get("Location"); got != mrTarget {
 		t.Errorf("Location = %q, want %q", got, mrTarget)
 	}
-	if got := resp.Header.Get("Cache-Control"); got != redirectCacheControl {
-		t.Errorf("Cache-Control = %q, want %q", got, redirectCacheControl)
+	// Spelled out rather than compared against the constant: a redirect that
+	// the browser is allowed to reuse would outlive the rule that produced it,
+	// so this is the assertion that a future cache header has to argue with.
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
 	}
 }
 
@@ -222,8 +363,11 @@ func TestOnlyKnownRoutesAreServed(t *testing.T) {
 		{"root", http.MethodGet, "/", http.StatusOK},
 		{"descriptor", http.MethodGet, "/opensearch.xml", http.StatusOK},
 		{"dry run", http.MethodGet, "/resolve", http.StatusOK},
-		{"favicon", http.MethodGet, "/favicon.ico", http.StatusNotFound},
+		{"suggestions", http.MethodGet, "/suggest", http.StatusOK},
+		{"favicon", http.MethodGet, "/favicon.ico", http.StatusOK},
+		{"no svg icon", http.MethodGet, "/favicon.svg", http.StatusNotFound},
 		{"deep path", http.MethodGet, "/a/b", http.StatusNotFound},
+		{"well-known probe", http.MethodGet, "/.well-known/x", http.StatusNotFound},
 		{"post to root", http.MethodPost, "/", http.StatusMethodNotAllowed},
 	}
 	for _, tt := range tests {
