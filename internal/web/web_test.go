@@ -206,6 +206,9 @@ func TestRootStillRedirectsWithQuery(t *testing.T) {
 	if got := resp.Header.Get("Location"); got != mrTarget {
 		t.Errorf("Location = %q, want %q", got, mrTarget)
 	}
+	if got := resp.Header.Get("Cache-Control"); got != redirectCacheControl {
+		t.Errorf("Cache-Control = %q, want %q", got, redirectCacheControl)
+	}
 }
 
 // Stray paths must 404 rather than render the onboarding page: a bare "/"

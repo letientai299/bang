@@ -18,7 +18,10 @@ import (
 
 // shortName must match the OpenSearch <ShortName> and the autodiscovery link's
 // title attribute; Firefox rejects the descriptor if they differ. Max 16 chars.
-const shortName = "bang"
+const (
+	shortName            = "bang"
+	redirectCacheControl = "private, max-age=3600"
+)
 
 type server struct {
 	live    *atomic.Pointer[config.Config]
@@ -92,8 +95,12 @@ func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		// of the flag: it settles how the omnibox encodes characters like #.
 		log.Printf("q=%q raw=%q -> %s", q, r.URL.RawQuery, to)
 	}
-	// 302, not 301: browsers cache 301s permanently and a cached redirect would
-	// survive every future config change.
+	// Keep redirects private because the query can contain sensitive text. An
+	// explicit freshness lifetime lets the browser skip this loopback hop when
+	// the exact query is repeated, without making the redirect permanent. The
+	// tradeoff is that a reloaded rule can take up to an hour to affect a query
+	// the browser already cached.
+	w.Header().Set("Cache-Control", redirectCacheControl)
 	http.Redirect(w, r, to, http.StatusFound)
 }
 
