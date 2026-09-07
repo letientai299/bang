@@ -4,6 +4,7 @@ golangci-lint = "2"
 ko = "latest"
 prek = "latest"
 prettier = "latest"
+taplo = "latest"
 shellcheck = "latest"
 shfmt = "latest"
 watchexec = "2"
@@ -128,13 +129,18 @@ run = "go test ./internal/config -run '^$' -bench '^BenchmarkResolve' -benchmem"
 [tasks.lint]
 description = "Lint Go and shell sources"
 alias = "l"
-run = ["golangci-lint run ./...", "shellcheck scripts/*.sh"]
+run = [
+  "golangci-lint run ./...",
+  "shellcheck scripts/*.sh",
+  "taplo format --check",
+]
 
 [tasks.fmt]
-description = "Format Go, shell, and prose sources"
+description = "Format Go, shell, TOML, and prose sources"
 run = [
   "golangci-lint fmt ./...",
   "golangci-lint run --fix ./...",
   "shfmt -w -i 2 -ci scripts/*.sh",
+  "taplo format",
   "prettier --write '**/*.md' '**/*.json'",
 ]

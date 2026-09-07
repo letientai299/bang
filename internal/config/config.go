@@ -181,7 +181,8 @@ func Load(path string) (*Config, error) {
 		if strings.TrimSpace(r.Match) != r.Match {
 			return nil, fmt.Errorf(
 				"rule %d (%s): match is padded with space, which no query can carry",
-				i+1, r.Match)
+				i+1, r.Match,
+			)
 		}
 		// Compile the pattern as written first, so a syntax error reports what
 		// the user typed rather than the anchors added below.
